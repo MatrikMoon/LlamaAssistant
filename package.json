@@ -1,0 +1,22 @@
+{
+  "name": "llamaassistant",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsc && node ./dist/index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "discord.js": "14.16.2",
+    "dotenv": "^16.4.7",
+    "ollama": "^0.5.8",
+    "weaviate-client": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.2",
+    "typescript": "^5.5.4"
+  }
+}
