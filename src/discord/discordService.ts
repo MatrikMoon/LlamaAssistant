@@ -6,36 +6,42 @@ type DiscordBotEvents = {
     botStarted: {};
 };
 
+type LlamaInChannel = {
+    channelId: string;
+    llama: Llama;
+    isTyping: boolean;
+    typingDebounceTimer?: NodeJS.Timeout;
+};
+
 export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
     private client: Client;
     private token: string;
     private clientId: string;
 
-    private llama: Llama;
-    private activeChannelId?: string;
-    private typingDebounceTimer?: NodeJS.Timeout;
+    private llamas: LlamaInChannel[];
 
     constructor(token: string, clientId: string) {
         super();
         this.token = token;
         this.clientId = clientId;
         this.client = new Client({ intents: [(0x3317EFD | 0x2 | 0x8000) & ~(65536 | 64)] }); // ALL_UNPRIVILEGED + GUILD_MEMBERS + MESSAGE_CONTENT - GUILD_SCHEDULED_EVENTS - GUILD_INVITES
-        this.llama = new Llama('discordTesting');
+        this.llamas = [];
 
-        this.sendIsTypingToActiveChannel = this.sendIsTypingToActiveChannel.bind(this);
+        this.sendIsTyping = this.sendIsTyping.bind(this);
         this.onMessageCreated = this.onMessageCreated.bind(this);
-
-        this.llama.on('messageInProgress', this.sendIsTypingToActiveChannel)
     }
 
-    private async sendIsTypingToActiveChannel() {
-        if (this.activeChannelId) {
-            const channelId = this.activeChannelId;
-            clearTimeout(this.typingDebounceTimer);
+    private async sendIsTyping(llama: LlamaInChannel) {
+        if (!llama.isTyping) {
+            const channel = this.client.channels.cache.get(llama.channelId);
+            await (channel as TextChannel).sendTyping();
+            llama.isTyping = true;
+        }
 
-            this.typingDebounceTimer = setTimeout(async () => {
-                const channel = this.client.channels.cache.get(channelId);
-                await (channel as TextChannel).sendTyping();
+        if (!llama.typingDebounceTimer) {
+            llama.typingDebounceTimer = setTimeout(async () => {
+                llama.isTyping = false;
+                llama.typingDebounceTimer = undefined;
             }, 8000);
         }
     }
@@ -45,17 +51,24 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
             return;
         }
 
-        if (message.channelId !== '1322487628120985640') {
+        if (message.channelId !== '1322487628120985640' && message.channelId !== '1323093263875309609' && message.channelId !== '945056978126913606') {
             return;
         }
 
-        console.log(message.content);
+        let channelLlama = this.llamas.find(x => x.channelId === message.channelId);
+        if (!channelLlama) {
+            channelLlama = { channelId: message.channelId, llama: new Llama(message.channelId), isTyping: false, typingDebounceTimer: undefined };
+            channelLlama.llama.on('messageInProgress', () => this.sendIsTyping(channelLlama!))
+            this.llamas.push();
+        }
 
-        this.activeChannelId = message.channelId;
+        const shouldRespond = await channelLlama.llama.shouldRespond(message.content, message.author.displayName);
+        if (shouldRespond) {
+            const reply = await channelLlama.llama.runPrompt(message.content);
 
-        const reply = await this.llama.runPrompt(message.content, message.author.displayName);
-
-        await this.sendToChannel(reply, message.channelId);
+            await this.sendToChannel(reply, message.channelId);
+            channelLlama.isTyping = false;
+        }
     }
 
     public async start() {
