@@ -51,7 +51,8 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
             return;
         }
 
-        if (message.channelId !== '1322487628120985640' && message.channelId !== '1323093263875309609' && message.channelId !== '945056978126913606') {
+        // ford's channel, dru's channel, ramp's spam channel, rimuru-dev, arthur's channel
+        if (!['1322487628120985640', '1323093263875309609', '945056978126913606', '1323149674445541447', '1323511616372867122'].includes(message.channelId)) {
             return;
         }
 

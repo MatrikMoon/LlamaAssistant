@@ -1,6 +1,6 @@
-import ollama, { EmbeddingsResponse, Message } from 'ollama';
+import { Message, Ollama } from 'ollama';
 import { CustomEventEmitter } from '../utils/custom-event-emitter.js';
-import weaviate, { Collection, WeaviateClient } from 'weaviate-client';
+import weaviate, { Collection } from 'weaviate-client';
 
 // Moon's note, 12/28/2024:
 // It seems that one of the packages required by weaviate (grpc), in turn requires "long.js,"
@@ -28,6 +28,7 @@ type MemoryModel = {
 };
 
 export class Llama extends CustomEventEmitter<LlamaEvents> {
+    private ollama: Ollama;
     private isInited: boolean;
     private channelIdentity: string;
     private memoryCollection: Collection<MemoryModel, string> | undefined;
@@ -36,13 +37,16 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
         super();
         this.isInited = false;
         this.channelIdentity = channelIdentity;
+        this.ollama = new Ollama({
+            host: 'http://192.168.1.11:11434'
+        });
     }
 
     private async init() {
         // Connect to vector database and grab a collection instance
         const client = await weaviate.connectToLocal(
             {
-                host: "127.0.0.1",   // URL only, no http prefix
+                host: "192.168.1.12",   // URL only, no http prefix
                 port: 8080,
                 grpcPort: 50051,     // Default is 50051, WCD uses 443
                 authCredentials: new weaviate.ApiKey('admin-key')
@@ -80,12 +84,12 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
 horniness: ${x.properties.horniness}
 significance: ${x.properties.significance}
 author: ${x.properties.author}
-prompt: ${x.properties.prompt}`
+prompt: "${x.properties.prompt}"`
             )
         });
 
         // Generate embed for prompt, so we can do semantic lookup on other saved embeds
-        let promptEmbedResult = await ollama.embed({ model: 'mxbai-embed-large', input: prompt });
+        let promptEmbedResult = await this.ollama.embed({ model: 'mxbai-embed-large', input: prompt });
 
         // Do the lookup I just mentioned in the previous comment
         let queryResult = await this.memoryCollection!.query.nearVector(promptEmbedResult.embeddings[0], {
@@ -99,15 +103,15 @@ prompt: ${x.properties.prompt}`
 horniness: ${x.properties.horniness}
 significance: ${x.properties.significance}
 author: ${x.properties.author}
-prompt: ${x.properties.prompt}`
+prompt: "${x.properties.prompt}"`
             )
         });
 
         const systemMessage =
-            `You are an AI assistant. You help determine whether or not Rimuru should respond to a message, based on the message and relevant memories.
+            `You are an AI assistant. You help determine whether or not Rimuru should respond to a message, based on the message and recent memories.
 Rimuru should ONLY respond if he's being addressed directly.
 
-You will respond with only "yes" or "no".
+You will respond only with your reasoning for your answer, followed by "yes" if you conclude that he should respond.
 
 Here are some example scenarios with their correct answers:
 
@@ -130,18 +134,28 @@ Scenario 4:
 Should Rimuru respond to this message? Message: Moon: Hey mark, you around?
 Answer: Moon is addressing a different person, Mark, so no.
 
-Relevant past messages will be provided in the prompt, with the following tags:
+Scenario 5:
+Should Rimuru respond to this message? Message: Moon: Hey Rimuru, ford says I took his toes
+Answer: Moon is addressing Rimuru, so yes.
+
+Scenario 6:
+Should Rimuru respond to this message? Message: Ramp: Hi
+Answer: It is unclear whether Ramp is addressing Rimuru, so no.
+
+Relevant past messages will be provided in the prompt, in the following format:
 importance: {number}
 horniness: {number}
 significance: {Event|Location|None}
 author: {string}
-prompt: {string}
+prompt: "{string}"
 
 "importance" measures how significant the message was to the location, story, or mood of the roleplay.
 "horniness" measures how suggestive the dialogue or actions in the message were.
 "significance" defines what makes this message significant. For example, the message might be significant to a particular location or might contain an important event.
 "author" is the name of the user who wrote the message. If the name is "Self", Rimuru is the author.
-"prompt" is the content of the message`;
+"prompt" is the content of the message
+
+Relevant messages are NOT in chronolocial order, and may be very old, so they should be treated as random memories rather than chat history.`;
 
         const context =
             `Here are some past messages that may be relevant to what the user is talking about. These may not be in chronological order, so only use them for remembering events or places' descriptions:
@@ -151,7 +165,7 @@ Here are the last 5 messages in the chat, in chronological order:
 ${recentMessages.join('\n\n')}`;
 
         // Generate the response
-        const response = await ollama.generate({ model: 'llama3.1', prompt: `${context}\n\nShould Rimuru respond to this message? Message: ${userIdentity}: ${prompt}`, system: systemMessage });
+        const response = await this.ollama.generate({ model: 'llama3.1', prompt: `${context}\n\nShould Rimuru respond to this message? Message: ${userIdentity}: ${prompt}`, system: systemMessage });
 
         // Store the message in memory no matter the result, for context
         await this.memoryCollection!.data.insert({
@@ -168,7 +182,7 @@ ${recentMessages.join('\n\n')}`;
 
         console.log(`${userIdentity}: ${prompt}\n(Will respond? ${response.response})`)
 
-        return response.response.toLowerCase() === "yes";
+        return response.response.slice(-20).toLowerCase().includes("yes");
     }
 
     public async runPrompt(prompt: string) {
@@ -196,7 +210,7 @@ ${recentMessages.join('\n\n')}`;
         //         });
 
         // Generate embed for prompt, so we can do semantic lookup on other saved embeds
-        let promptEmbedResult = await ollama.embed({ model: 'mxbai-embed-large', input: prompt });
+        let promptEmbedResult = await this.ollama.embed({ model: 'mxbai-embed-large', input: prompt });
 
         // Do the lookup I just mentioned in the previous comment
         let queryResult = await this.memoryCollection!.query.nearVector(promptEmbedResult.embeddings[0], {
@@ -210,7 +224,7 @@ ${recentMessages.join('\n\n')}`;
 horniness: ${x.properties.horniness}
 significance: ${x.properties.significance}
 author: ${x.properties.author}
-prompt: ${x.properties.prompt}`
+prompt: "${x.properties.prompt}"`
             )
         });
 
@@ -235,7 +249,7 @@ importance: {number}
 horniness: {number}
 significance: {Event|Location|None}
 author: {string}
-prompt: {string}
+prompt: "{string}"
 
 "importance" measures how significant the message was to the location, story, or mood of the roleplay.
 "horniness" measures how suggestive the dialogue or actions in the message were.
@@ -265,11 +279,7 @@ ${relevantMessages.join('\n\n')}
             messages.push({ role: isSelfMessage ? 'assistant' : 'user', content });
         }
 
-        console.log('about to chat');
-
-        let finalOutput = await ollama.chat({ model: 'llama3.1', messages, stream: true });
-
-        console.log('after chat, generating');
+        let finalOutput = await this.ollama.chat({ model: 'llama3.1', messages, stream: true });
 
         let finalText = '';
         for await (const part of finalOutput) {
@@ -282,7 +292,7 @@ ${relevantMessages.join('\n\n')}
         console.log();
 
         // Generate embed for what the bot said
-        let responseEmbedResult = await ollama.embed({ model: 'mxbai-embed-large', input: finalText });
+        let responseEmbedResult = await this.ollama.embed({ model: 'mxbai-embed-large', input: finalText });
 
         // Save the response in memory (prompt will already have been saved by `shouldRespond`)
         await this.memoryCollection!.data.insert({
@@ -296,8 +306,6 @@ ${relevantMessages.join('\n\n')}
             },
             vectors: responseEmbedResult.embeddings[0]
         });
-
-        console.log('returning final text');
 
         return finalText;
     }
