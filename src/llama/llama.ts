@@ -38,7 +38,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
         this.isInited = false;
         this.channelIdentity = channelIdentity;
         this.ollama = new Ollama({
-            host: 'http://192.168.1.11:11434'
+            host: 'http://192.168.1.100:11434'
         });
     }
 
@@ -46,7 +46,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
         // Connect to vector database and grab a collection instance
         const client = await weaviate.connectToLocal(
             {
-                host: "192.168.1.12",   // URL only, no http prefix
+                host: "192.168.1.101",   // URL only, no http prefix
                 port: 8080,
                 grpcPort: 50051,     // Default is 50051, WCD uses 443
                 authCredentials: new weaviate.ApiKey('admin-key')
