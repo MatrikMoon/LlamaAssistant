@@ -245,7 +245,7 @@ prompt: "${x.properties.prompt}"`;
       });
 
     // Begin generation
-    // this.emit('messageInProgress', {});
+    this.emit("messageInProgress", {});
 
     // Assemble System message, and a bit of context (!!! Moon's note: I have not yet assembled context. You probably just wanna
     // expand the "mostRecentMemory" above to about 10, and just dump the message text in there)
