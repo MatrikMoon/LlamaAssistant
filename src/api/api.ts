@@ -97,7 +97,7 @@ export class ApiServer {
             let llama = this.llamas.find(x => x.userId === userId);
             if (!llama) {
                 llama = {
-                    llama: new Llama(userId, "llama3.1:latest", SYSTEM_MESSAGE),
+                    llama: new Llama(userId, "llama3.3", SYSTEM_MESSAGE),
                     userId
                 };
                 this.llamas.push(llama);
@@ -113,7 +113,6 @@ export class ApiServer {
     }
 
     private async runFishSpeech(text: string): Promise<Buffer | null> {
-        console.log("TTS: " + text);
         const ttsHost = "http://192.168.1.103:8080/v1/tts";
         const payload = {
             text,
