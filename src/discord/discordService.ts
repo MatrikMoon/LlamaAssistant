@@ -87,13 +87,19 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
       channelLlama.llama.on("messageInProgress", () =>
         this.sendIsTyping(channelLlama!)
       );
-      this.llamas.push();
+      this.llamas.push(channelLlama);
     }
 
+    // Determine whether we should respond
     const shouldRespond = await channelLlama.llama.shouldRespond(
       message.content,
       message.author.displayName
     );
+
+    // Save the incoming message as a memory
+    await channelLlama.llama.saveIncomingPrompt(message.content, message.author.displayName);
+
+    // Respond, if it was determined we should do so
     if (shouldRespond) {
       const reply = await channelLlama.llama.runPrompt(message.content);
 

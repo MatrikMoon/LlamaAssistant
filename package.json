@@ -10,12 +10,15 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "discord.js": "14.16.2",
+    "axios": "^1.7.9",
+    "discord.js": "^14.14.1",
     "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "ollama": "^0.5.8",
     "weaviate-client": "^3.3.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.5.2",
     "typescript": "^5.5.4"
   }
