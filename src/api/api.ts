@@ -27,127 +27,130 @@ prompt: "{string}"
 When responding, you will not use tags. You will not start the message with "Self:".`;
 
 interface PromptRequest {
-    prompt: string;
-    userId: string;
+  prompt: string;
+  userId: string;
 }
 
 type ApiLlama = {
-    userId: string;
-    llama: Llama;
+  userId: string;
+  llama: Llama;
 };
 
 export class ApiServer {
-    private port: number;
-    private express: Express;
-    private llamas: ApiLlama[];
+  private port: number;
+  private express: Express;
+  private llamas: ApiLlama[];
 
-    constructor(port: number = 8080) {
-        this.port = port;
-        this.express = express();
-        this.express.use(express.json());
+  constructor(port: number = 8080) {
+    this.port = port;
+    this.express = express();
+    this.express.use(express.json());
 
-        this.llamas = [];
+    this.llamas = [];
 
-        this.handleRequest = this.handleRequest.bind(this);
-        this.runOllama = this.runOllama.bind(this);
-        this.runFishSpeech = this.runFishSpeech.bind(this);
-        this.runRVC = this.runRVC.bind(this);
+    this.handleRequest = this.handleRequest.bind(this);
+    this.runOllama = this.runOllama.bind(this);
+    this.runFishSpeech = this.runFishSpeech.bind(this);
+    this.runRVC = this.runRVC.bind(this);
 
-        this.express.post("/process", this.handleRequest);
+    this.express.post("/process", this.handleRequest);
+  }
+
+  public start() {
+    this.express.listen(this.port, () => {
+      console.log(`Server running on port ${this.port}`);
+    });
+  }
+
+  private async handleRequest(req: Request, res: Response) {
+    const { prompt, userId } = req.body as PromptRequest;
+    if (!prompt || !userId) {
+      return res.status(400).json({ detail: "Prompt and userId are required" });
     }
 
-    public start() {
-        this.express.listen(this.port, () => {
-            console.log(`Server running on port ${this.port}`);
-        });
+    // Step 1: Process the prompt with Ollama.
+    const ollamaOutput = await this.runOllama(prompt, userId);
+    if (!ollamaOutput) {
+      return res.status(500).json({ detail: "Ollama processing failed." });
     }
 
-    private async handleRequest(req: Request, res: Response) {
-        const { prompt, userId } = req.body as PromptRequest;
-        if (!prompt || !userId) {
-            return res.status(400).json({ detail: "Prompt and userId are required" });
-        }
-
-        // Step 1: Process the prompt with Ollama.
-        const ollamaOutput = await this.runOllama(prompt, userId);
-        if (!ollamaOutput) {
-            return res.status(500).json({ detail: "Ollama processing failed." });
-        }
-
-        // Step 2: Process Ollama's output with fish-speech.
-        const fishOutput = await this.runFishSpeech(ollamaOutput);
-        if (!fishOutput) {
-            return res.status(500).json({ detail: "Fish-speech processing failed." });
-        }
-
-        // Step 3: Process fish-speech's output with RVC.
-        const rvcOutput = await this.runRVC(fishOutput);
-        if (!rvcOutput) {
-            return res.status(500).json({ detail: "RVC processing failed." });
-        }
-
-        // Return the final result.
-        res.setHeader("Content-Disposition", "attachment; filename=audio.wav");
-        res.contentType("audio/wav");
-        return res.send(rvcOutput);
+    // Step 2: Process Ollama's output with fish-speech.
+    const fishOutput = await this.runFishSpeech(ollamaOutput);
+    if (!fishOutput) {
+      return res.status(500).json({ detail: "Fish-speech processing failed." });
     }
 
-    private async runOllama(prompt: string, userId: string): Promise<string | null> {
-        try {
-            let llama = this.llamas.find(x => x.userId === userId);
-            if (!llama) {
-                llama = {
-                    llama: new Llama(userId, "llama3.3", SYSTEM_MESSAGE),
-                    userId
-                };
-                this.llamas.push(llama);
-            }
-
-            await llama.llama.saveIncomingPrompt(prompt, userId);
-
-            return await llama.llama.runPrompt(prompt, userId);
-        } catch (error) {
-            console.error(`Ollama error: ${error}`);
-            return null;
-        }
+    // Step 3: Process fish-speech's output with RVC.
+    const rvcOutput = await this.runRVC(fishOutput);
+    if (!rvcOutput) {
+      return res.status(500).json({ detail: "RVC processing failed." });
     }
 
-    private async runFishSpeech(text: string): Promise<Buffer | null> {
-        const ttsHost = "http://192.168.1.103:8080/v1/tts";
-        const payload = {
-            text,
-            format: "wav",
-            reference_id: "speaker1",
-            use_memory_cache: "on",
-            normalize: "false",
+    // Return the final result.
+    res.setHeader("Content-Disposition", "attachment; filename=audio.wav");
+    res.contentType("audio/wav");
+    return res.send(rvcOutput);
+  }
+
+  private async runOllama(
+    prompt: string,
+    userId: string
+  ): Promise<string | null> {
+    try {
+      let llama = this.llamas.find((x) => x.userId === userId);
+      if (!llama) {
+        llama = {
+          llama: new Llama(userId, "llama3.1:latest", SYSTEM_MESSAGE),
+          userId,
         };
-        try {
-            const response = await axios.post(ttsHost, payload, {
-                headers: { accept: "*/*", "Content-Type": "application/json" },
-                responseType: "arraybuffer",
-            });
-            console.log(`Fish-speech returned ${response.data.byteLength} bytes`);
-            return Buffer.from(response.data);
-        } catch (error) {
-            console.error(`Fish-speech error: ${error}`);
-            return null;
-        }
-    }
+        this.llamas.push(llama);
+      }
 
-    private async runRVC(data: Buffer): Promise<Buffer | null> {
-        const rvcHost = "http://192.168.1.107:8080/convert";
-        const audioData = data.toString("base64");
-        const payload = { audio_data: audioData };
-        try {
-            const response = await axios.post(rvcHost, payload, {
-                headers: { "Content-Type": "application/json" },
-                responseType: "arraybuffer",
-            });
-            console.log(`RVC returned ${response.data.byteLength} bytes`);
-            return Buffer.from(response.data);
-        } catch (error) {
-            console.error(`RVC error: ${error}`);
-            return null;
-        }
+      await llama.llama.saveIncomingPrompt(prompt, userId);
+
+      return await llama.llama.runPrompt(prompt, userId);
+    } catch (error) {
+      console.error(`Ollama error: ${error}`);
+      return null;
     }
+  }
+
+  private async runFishSpeech(text: string): Promise<Buffer | null> {
+    const ttsHost = "http://192.168.1.103:8080/v1/tts";
+    const payload = {
+      text,
+      format: "wav",
+      reference_id: "speaker1",
+      use_memory_cache: "on",
+      normalize: "false",
+    };
+    try {
+      const response = await axios.post(ttsHost, payload, {
+        headers: { accept: "*/*", "Content-Type": "application/json" },
+        responseType: "arraybuffer",
+      });
+      console.log(`Fish-speech returned ${response.data.byteLength} bytes`);
+      return Buffer.from(response.data);
+    } catch (error) {
+      console.error(`Fish-speech error: ${error}`);
+      return null;
+    }
+  }
+
+  private async runRVC(data: Buffer): Promise<Buffer | null> {
+    const rvcHost = "http://192.168.1.107:8080/convert";
+    const audioData = data.toString("base64");
+    const payload = { audio_data: audioData };
+    try {
+      const response = await axios.post(rvcHost, payload, {
+        headers: { "Content-Type": "application/json" },
+        responseType: "arraybuffer",
+      });
+      console.log(`RVC returned ${response.data.byteLength} bytes`);
+      return Buffer.from(response.data);
+    } catch (error) {
+      console.error(`RVC error: ${error}`);
+      return null;
+    }
+  }
 }
