@@ -19,11 +19,11 @@ type LlamaInChannel = {
 };
 
 export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
-  private client: Client;
-  private token: string;
-  private clientId: string;
+  private readonly client: Client;
+  private readonly token: string;
+  private readonly clientId: string;
 
-  private llamas: LlamaInChannel[];
+  private readonly llamas: LlamaInChannel[];
 
   constructor(token: string, clientId: string) {
     super();
@@ -97,7 +97,10 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
     );
 
     // Save the incoming message as a memory
-    await channelLlama.llama.saveIncomingPrompt(message.content, message.author.displayName);
+    await channelLlama.llama.saveIncomingPrompt(
+      message.content,
+      message.author.displayName
+    );
 
     // Respond, if it was determined we should do so
     if (shouldRespond) {

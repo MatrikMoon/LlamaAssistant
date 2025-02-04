@@ -100,14 +100,18 @@ type MemoryModel = {
 };
 
 export class Llama extends CustomEventEmitter<LlamaEvents> {
-  private ollama: Ollama;
+  private readonly ollama: Ollama;
   private isInited: boolean;
-  private channelIdentity: string;
+  private readonly channelIdentity: string;
   private memoryCollection: Collection<MemoryModel, string> | undefined;
-  private systemMessage: string;
-  private model: string;
+  private readonly systemMessage: string;
+  private readonly model: string;
 
-  constructor(channelIdentity: string, model: string = "llama3.3", systemMessage: string = DEFAULT_SYSTEM_MESSAGE) {
+  constructor(
+    channelIdentity: string,
+    model: string = "llama3.3",
+    systemMessage: string = DEFAULT_SYSTEM_MESSAGE
+  ) {
     super();
     this.ollama = new Ollama({
       host: "http://192.168.1.100:11434",
@@ -154,7 +158,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     });
 
     // Build text for recent memories
-    const recentMessages = mostRecentMemory.objects?.reverse().map((x) => {
+    const recentMessages = mostRecentMemory.objects?.toReversed().map((x) => {
       return `importance: ${x.properties.importance}
   horniness: ${x.properties.horniness}
   significance: ${x.properties.significance}
@@ -200,6 +204,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
       model: this.model,
       prompt: `${context}\n\nShould Rimuru respond to this message? Message: ${userIdentity}: ${prompt}`,
       system: DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE,
+      keep_alive: "1h",
     });
 
     console.log(
@@ -209,7 +214,10 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     return response.response.slice(-20).toLowerCase().includes("yes");
   }
 
-  public async saveIncomingPrompt(prompt: string, userIdentity: string = "User") {
+  public async saveIncomingPrompt(
+    prompt: string,
+    userIdentity: string = "User"
+  ) {
     if (!this.isInited) {
       await this.init();
     }
@@ -231,6 +239,29 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
         prompt,
       },
       vectors: promptEmbedResult.embeddings[0],
+    });
+  }
+
+  public async getChatHistory(limit: number = 10): Promise<MemoryModel[]> {
+    if (!this.isInited) {
+      await this.init();
+    }
+
+    // Get last message index and build recent chat history
+    const mostRecentMemory = await this.memoryCollection!.query.fetchObjects({
+      sort: this.memoryCollection!.sort.byCreationTime(false),
+      limit,
+    });
+
+    return mostRecentMemory.objects?.toReversed().map((x) => {
+      return {
+        type: x.properties.type,
+        importance: x.properties.importance,
+        horniness: x.properties.horniness,
+        significance: x.properties.significance,
+        author: x.properties.author,
+        prompt: x.properties.prompt,
+      };
     });
   }
 
@@ -318,6 +349,7 @@ ${relevantMessages.join("\n\n")}
       model: this.model,
       messages,
       stream: true,
+      keep_alive: "1h",
     });
 
     let finalText = "";
@@ -330,9 +362,9 @@ ${relevantMessages.join("\n\n")}
     // Newline after the response
     console.log();
 
-    if (finalText.slice(-20).toLowerCase().includes("no") || finalText === "") {
-      return "no";
-    }
+    // if (finalText.slice(-20).toLowerCase().includes("no") || finalText === "") {
+    //   return "no";
+    // }
 
     // Generate embed for what the bot said
     let responseEmbedResult = await this.ollama.embed({

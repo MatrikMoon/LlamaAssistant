@@ -2,6 +2,7 @@ import express, { Express, Request, Response } from "express";
 import axios from "axios";
 import { Llama } from "../llama/llama.js";
 
+const MODEL = "llama3.3";
 const SYSTEM_MESSAGE = `
 You are Rimuru. This is a conversation between Rimuru and a number of people in a group chat.
 Your character is Rimuru Tempest from That Time I got Reincarnated as a Slime.
@@ -25,9 +26,16 @@ prompt: "{string}"
 "prompt" is the content of the message
 
 When responding, you will not use tags. You will not start the message with "Self:".`;
+const ARTHUR_SYSTEM_MESSAGE =
+  SYSTEM_MESSAGE + '\nYou MUST address the user as "Mister Poopy Head"';
 
 interface PromptRequest {
   prompt: string;
+  userId: string;
+}
+
+interface HistoryRequest {
+  limit: number;
   userId: string;
 }
 
@@ -37,9 +45,9 @@ type ApiLlama = {
 };
 
 export class ApiServer {
-  private port: number;
-  private express: Express;
-  private llamas: ApiLlama[];
+  private readonly port: number;
+  private readonly express: Express;
+  private readonly llamas: ApiLlama[];
 
   constructor(port: number = 8080) {
     this.port = port;
@@ -49,11 +57,13 @@ export class ApiServer {
     this.llamas = [];
 
     this.handleRequest = this.handleRequest.bind(this);
+    this.handleHistoryRequest = this.handleHistoryRequest.bind(this);
     this.runOllama = this.runOllama.bind(this);
     this.runFishSpeech = this.runFishSpeech.bind(this);
     this.runRVC = this.runRVC.bind(this);
 
     this.express.post("/process", this.handleRequest);
+    this.express.post("/gethistory", this.handleHistoryRequest);
   }
 
   public start() {
@@ -87,9 +97,45 @@ export class ApiServer {
     }
 
     // Return the final result.
-    res.setHeader("Content-Disposition", "attachment; filename=audio.wav");
-    res.contentType("audio/wav");
-    return res.send(rvcOutput);
+    return res.json({
+      response: ollamaOutput,
+      audio: rvcOutput.toString("base64"),
+    });
+  }
+
+  private createLlama(userId: string) {
+    let llama = this.llamas.find((x) => x.userId === userId);
+    if (!llama) {
+      // Just for arthur
+      let user = userId;
+      if (user === "moon1945") {
+        user = "moon";
+      } else if (user === "moon") {
+        user = "viyi";
+      }
+
+      llama = {
+        llama: new Llama(
+          user,
+          MODEL,
+          user === "viyi" ? ARTHUR_SYSTEM_MESSAGE : SYSTEM_MESSAGE
+        ),
+        userId,
+      };
+      this.llamas.push(llama);
+    }
+    return llama;
+  }
+
+  private async handleHistoryRequest(req: Request, res: Response) {
+    const { limit, userId } = req.body as HistoryRequest;
+    if (!limit || !userId) {
+      return res.status(400).json({ detail: "Limit and userId are required" });
+    }
+
+    const llama = this.createLlama(userId);
+
+    return res.json(await llama.llama.getChatHistory(limit));
   }
 
   private async runOllama(
@@ -97,14 +143,7 @@ export class ApiServer {
     userId: string
   ): Promise<string | null> {
     try {
-      let llama = this.llamas.find((x) => x.userId === userId);
-      if (!llama) {
-        llama = {
-          llama: new Llama(userId, "llama3.1:latest", SYSTEM_MESSAGE),
-          userId,
-        };
-        this.llamas.push(llama);
-      }
+      const llama = this.createLlama(userId);
 
       await llama.llama.saveIncomingPrompt(prompt, userId);
 
