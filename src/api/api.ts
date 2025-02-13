@@ -2,7 +2,7 @@ import express, { Express, Request, Response } from "express";
 import axios from "axios";
 import { Llama } from "../llama/llama.js";
 
-const MODEL = "llama3.3";
+const MODEL = "deepseek-r1:32b";
 const SYSTEM_MESSAGE = `
 You are Rimuru. This is a conversation between Rimuru and a number of people in a group chat.
 Your character is Rimuru Tempest from That Time I got Reincarnated as a Slime.
@@ -42,6 +42,7 @@ interface HistoryRequest {
 type ApiLlama = {
   userId: string;
   llama: Llama;
+  inputDebounceTimer?: NodeJS.Timeout;
 };
 
 export class ApiServer {
@@ -57,12 +58,14 @@ export class ApiServer {
     this.llamas = [];
 
     this.handleRequest = this.handleRequest.bind(this);
+    this.handleVoiceRequest = this.handleVoiceRequest.bind(this);
     this.handleHistoryRequest = this.handleHistoryRequest.bind(this);
     this.runOllama = this.runOllama.bind(this);
     this.runFishSpeech = this.runFishSpeech.bind(this);
     this.runRVC = this.runRVC.bind(this);
 
     this.express.post("/process", this.handleRequest);
+    this.express.post("/processVoice", this.handleVoiceRequest);
     this.express.post("/gethistory", this.handleHistoryRequest);
   }
 
@@ -78,29 +81,87 @@ export class ApiServer {
       return res.status(400).json({ detail: "Prompt and userId are required" });
     }
 
-    // Step 1: Process the prompt with Ollama.
     const ollamaOutput = await this.runOllama(prompt, userId);
     if (!ollamaOutput) {
       return res.status(500).json({ detail: "Ollama processing failed." });
     }
 
-    // Step 2: Process Ollama's output with fish-speech.
-    const fishOutput = await this.runFishSpeech(ollamaOutput);
-    if (!fishOutput) {
-      return res.status(500).json({ detail: "Fish-speech processing failed." });
+    let ollamaOutputWithoutThink = ollamaOutput;
+    if (ollamaOutput.includes("</think>")) {
+      ollamaOutputWithoutThink = ollamaOutput.substring(
+        ollamaOutput.indexOf("</think>" + "</think>".length)
+      );
     }
 
-    // Step 3: Process fish-speech's output with RVC.
-    const rvcOutput = await this.runRVC(fishOutput);
-    if (!rvcOutput) {
-      return res.status(500).json({ detail: "RVC processing failed." });
+    return await this.convertTextToAudioAndSendResponse(
+      ollamaOutputWithoutThink,
+      res
+    );
+  }
+
+  private async handleVoiceRequest(req: Request, res: Response) {
+    const { prompt, userId } = req.body as PromptRequest;
+    if (!prompt || !userId) {
+      return res.status(400).json({ detail: "Prompt and userId are required" });
     }
 
-    // Return the final result.
-    return res.json({
-      response: ollamaOutput,
-      audio: rvcOutput.toString("base64"),
-    });
+    const filteredPrompt = this.filterWordsFromSTT(prompt);
+
+    const llama = this.createLlama(userId);
+
+    if (llama.inputDebounceTimer) {
+      await llama.llama.saveIncomingPrompt(prompt);
+      clearTimeout(llama.inputDebounceTimer);
+    }
+
+    llama.inputDebounceTimer = setTimeout(async () => {
+      llama.inputDebounceTimer = undefined;
+
+      const shouldRespond = await llama.llama.shouldRespond(
+        filteredPrompt,
+        userId
+      );
+
+      await llama.llama.saveIncomingPrompt(prompt);
+
+      if (shouldRespond) {
+        const ollamaOutput = await this.runOllama(
+          filteredPrompt,
+          userId,
+          false
+        );
+        if (!ollamaOutput) {
+          return res.status(500).json({ detail: "Ollama processing failed." });
+        }
+
+        let ollamaOutputWithoutThink = ollamaOutput;
+        if (ollamaOutput.includes("</think>")) {
+          ollamaOutputWithoutThink = ollamaOutput.substring(
+            ollamaOutput.indexOf("</think>" + "</think>".length)
+          );
+        }
+
+        await this.convertTextToAudioAndSendResponse(
+          ollamaOutputWithoutThink,
+          res
+        );
+      } else {
+        return res
+          .status(204)
+          .json({ detail: "Ollama determined not to respond" });
+      }
+    }, 2000);
+  }
+
+  private async handleHistoryRequest(req: Request, res: Response) {
+    const { limit, userId } = req.body as HistoryRequest;
+    if (!limit || !userId) {
+      return res.status(400).json({ detail: "Limit and userId are required" });
+    }
+
+    const llama = this.createLlama(userId);
+
+    return res.json(await llama.llama.getChatHistory(limit));
   }
 
   private createLlama(userId: string) {
@@ -127,25 +188,54 @@ export class ApiServer {
     return llama;
   }
 
-  private async handleHistoryRequest(req: Request, res: Response) {
-    const { limit, userId } = req.body as HistoryRequest;
-    if (!limit || !userId) {
-      return res.status(400).json({ detail: "Limit and userId are required" });
+  private filterWordsForTTS(text: string) {
+    return text.replace("rimuru", "reemaru").replace("Rimuru", "Reemaru");
+  }
+
+  private filterWordsFromSTT(text: string) {
+    return text
+      .replace(" Reamer", " Rimuru")
+      .replace(" reamer", " Rimuru")
+      .replace("Remaru", "Rimuru")
+      .replace("remaru", "Rimuru")
+      .replace("Remerow", "Rimuru")
+      .replace("remerow", "Rimuru")
+      .replace("Reemaru", "Rimuru")
+      .replace("reemaru", "Rimuru")
+      .replace("Reemuru", "Rimuru")
+      .replace("reemuru", "Rimuru")
+      .replace("Imaru", "Rimuru")
+      .replace("imaru", "Rimuru");
+  }
+
+  private async convertTextToAudioAndSendResponse(text: string, res: Response) {
+    const fishOutput = await this.runFishSpeech(this.filterWordsForTTS(text));
+    if (!fishOutput) {
+      return res.status(500).json({ detail: "Fish-speech processing failed." });
     }
 
-    const llama = this.createLlama(userId);
+    const rvcOutput = await this.runRVC(fishOutput);
+    if (!rvcOutput) {
+      return res.status(500).json({ detail: "RVC processing failed." });
+    }
 
-    return res.json(await llama.llama.getChatHistory(limit));
+    return res.json({
+      response: text,
+      audio: rvcOutput.toString("base64"),
+    });
   }
 
   private async runOllama(
     prompt: string,
-    userId: string
+    userId: string,
+    saveIncomingPrompt: boolean = true
   ): Promise<string | null> {
     try {
       const llama = this.createLlama(userId);
 
-      await llama.llama.saveIncomingPrompt(prompt, userId);
+      if (saveIncomingPrompt) {
+        await llama.llama.saveIncomingPrompt(prompt, userId);
+      }
 
       return await llama.llama.runPrompt(prompt, userId);
     } catch (error) {

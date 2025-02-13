@@ -46,6 +46,7 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
     }
 
     if (!llama.typingDebounceTimer) {
+      clearTimeout(llama.typingDebounceTimer);
       llama.typingDebounceTimer = setTimeout(async () => {
         llama.isTyping = false;
         llama.typingDebounceTimer = undefined;
