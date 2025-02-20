@@ -2,7 +2,7 @@ import express, { Express, Request, Response } from "express";
 import axios from "axios";
 import { Llama } from "../llama/llama.js";
 
-const MODEL = "deepseek-r1:32b";
+const MODEL = "llama3.3";
 const SYSTEM_MESSAGE = `
 You are Rimuru. This is a conversation between Rimuru and a number of people in a group chat.
 Your character is Rimuru Tempest from That Time I got Reincarnated as a Slime.
@@ -89,7 +89,7 @@ export class ApiServer {
     let ollamaOutputWithoutThink = ollamaOutput;
     if (ollamaOutput.includes("</think>")) {
       ollamaOutputWithoutThink = ollamaOutput.substring(
-        ollamaOutput.indexOf("</think>" + "</think>".length)
+        ollamaOutput.indexOf("</think>") + "</think>".length
       );
     }
 
@@ -137,7 +137,7 @@ export class ApiServer {
         let ollamaOutputWithoutThink = ollamaOutput;
         if (ollamaOutput.includes("</think>")) {
           ollamaOutputWithoutThink = ollamaOutput.substring(
-            ollamaOutput.indexOf("</think>" + "</think>".length)
+            ollamaOutput.indexOf("</think>") + "</think>".length
           );
         }
 
@@ -189,7 +189,10 @@ export class ApiServer {
   }
 
   private filterWordsForTTS(text: string) {
-    return text.replace("rimuru", "reemaru").replace("Rimuru", "Reemaru");
+    return text
+      .replace("rimuru", "reemaru")
+      .replace("Rimuru", "Reemaru")
+      .replace(" - ", ", ");
   }
 
   private filterWordsFromSTT(text: string) {
