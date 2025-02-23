@@ -218,6 +218,8 @@ export class ApiServer {
       .replace("reemaru", "Rimuru")
       .replace("Reemuru", "Rimuru")
       .replace("reemuru", "Rimuru")
+      .replace("Rimaru", "Rimuru")
+      .replace("rimaru", "Rimuru")
       .replace("Imaru", "Rimuru")
       .replace("imaru", "Rimuru");
   }
