@@ -42,6 +42,7 @@ interface HistoryRequest {
 type ApiLlama = {
   userId: string;
   llama: Llama;
+  currentlyProcessingVoice?: boolean;
   inputDebounceTimer?: NodeJS.Timeout;
 };
 
@@ -109,13 +110,20 @@ export class ApiServer {
 
     const llama = this.createLlama(userId);
 
-    if (llama.inputDebounceTimer) {
+    if (llama.inputDebounceTimer && !llama.currentlyProcessingVoice) {
       await llama.llama.saveIncomingPrompt(prompt);
       clearTimeout(llama.inputDebounceTimer);
+      res.status(204).json({ detail: "Prompt debounced" });
+    } else if (llama.currentlyProcessingVoice) {
+      await llama.llama.saveIncomingPrompt(prompt);
+      res
+        .status(204)
+        .json({ detail: "Will not process due to prompt in progress" });
     }
 
     llama.inputDebounceTimer = setTimeout(async () => {
       llama.inputDebounceTimer = undefined;
+      llama.currentlyProcessingVoice = true;
 
       const shouldRespond = await llama.llama.shouldRespond(
         filteredPrompt,
@@ -131,6 +139,7 @@ export class ApiServer {
           false
         );
         if (!ollamaOutput) {
+          llama.currentlyProcessingVoice = false;
           return res.status(500).json({ detail: "Ollama processing failed." });
         }
 
@@ -145,7 +154,9 @@ export class ApiServer {
           ollamaOutputWithoutThink,
           res
         );
+        llama.currentlyProcessingVoice = false;
       } else {
+        llama.currentlyProcessingVoice = false;
         return res
           .status(204)
           .json({ detail: "Ollama determined not to respond" });
