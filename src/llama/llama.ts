@@ -28,6 +28,8 @@ When responding, you will not use tags. You will not start the message with "Sel
 const DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE = `You are an AI assistant. You help determine whether or not Rimuru should respond to a message, based on the message and recent memories.
   Rimuru should ONLY respond if he's being addressed directly.
 
+  Messages from the user are coming from speech-to-text, so they may be jumbled. Do not respond if the latest message is the same words repeated over and over, or is made up of nonsense.
+
   You will respond only with "yes" if you conclude that he should respond.
 
   Here are some example scenarios with their correct answers:
