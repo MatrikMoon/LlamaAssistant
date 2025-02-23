@@ -110,12 +110,12 @@ export class ApiServer {
 
     const llama = this.createLlama(userId);
 
-    if (llama.inputDebounceTimer && !llama.currentlyProcessingVoice) {
-      await llama.llama.saveIncomingPrompt(prompt);
+    if (llama.inputDebounceTimer) {
+      await llama.llama.saveIncomingPrompt(filteredPrompt);
       clearTimeout(llama.inputDebounceTimer);
       res.status(204).json({ detail: "Prompt debounced" });
     } else if (llama.currentlyProcessingVoice) {
-      await llama.llama.saveIncomingPrompt(prompt);
+      await llama.llama.saveIncomingPrompt(filteredPrompt);
       res
         .status(204)
         .json({ detail: "Will not process due to prompt in progress" });
@@ -130,7 +130,7 @@ export class ApiServer {
         userId
       );
 
-      await llama.llama.saveIncomingPrompt(prompt);
+      await llama.llama.saveIncomingPrompt(filteredPrompt);
 
       if (shouldRespond) {
         const ollamaOutput = await this.runOllama(
