@@ -111,11 +111,13 @@ export class ApiServer {
     const llama = this.createLlama(userId);
 
     if (llama.inputDebounceTimer) {
-      await llama.llama.saveIncomingPrompt(filteredPrompt);
+      // For now, we're only saving prompts rimuru responds to
+      // await llama.llama.saveIncomingPrompt(filteredPrompt);
       clearTimeout(llama.inputDebounceTimer);
       res.status(204).json({ detail: "Prompt debounced" });
     } else if (llama.currentlyProcessingVoice) {
-      await llama.llama.saveIncomingPrompt(filteredPrompt);
+      // For now, we're only saving prompts rimuru responds to
+      // await llama.llama.saveIncomingPrompt(filteredPrompt);
       res
         .status(204)
         .json({ detail: "Will not process due to prompt in progress" });
@@ -130,9 +132,12 @@ export class ApiServer {
         userId
       );
 
-      await llama.llama.saveIncomingPrompt(filteredPrompt);
+      // For now, we're only saving prompts rimuru responds to
+      // await llama.llama.saveIncomingPrompt(filteredPrompt);
 
       if (shouldRespond) {
+        await llama.llama.saveIncomingPrompt(filteredPrompt);
+
         const ollamaOutput = await this.runOllama(
           filteredPrompt,
           userId,
@@ -210,18 +215,24 @@ export class ApiServer {
     return text
       .replace(" Reamer", " Rimuru")
       .replace(" reamer", " Rimuru")
-      .replace("Remaru", "Rimuru")
-      .replace("remaru", "Rimuru")
-      .replace("Remerow", "Rimuru")
-      .replace("remerow", "Rimuru")
-      .replace("Reemaru", "Rimuru")
-      .replace("reemaru", "Rimuru")
-      .replace("Reemuru", "Rimuru")
-      .replace("reemuru", "Rimuru")
-      .replace("Rimaru", "Rimuru")
-      .replace("rimaru", "Rimuru")
-      .replace("Imaru", "Rimuru")
-      .replace("imaru", "Rimuru");
+      .replace(" Rimmer", " Rimuru")
+      .replace(" rimmer", " Rimuru")
+      .replace(" Reimuer", " Rimuru")
+      .replace(" reimuer", " Rimuru")
+      .replace(" Remaru", " Rimuru")
+      .replace(" remaru", " Rimuru")
+      .replace(" Remerow", " Rimuru")
+      .replace(" remerow", " Rimuru")
+      .replace(" Reemaru", " Rimuru")
+      .replace(" reemaru", " Rimuru")
+      .replace(" Reemuru", " Rimuru")
+      .replace(" reemuru", " Rimuru")
+      .replace(" Rimaru", " Rimuru")
+      .replace(" rimaru", " Rimuru")
+      .replace(" Remeru", " Rimuru")
+      .replace(" remeru", " Rimuru")
+      .replace(" Imaru", " Rimuru")
+      .replace(" imaru", " Rimuru");
   }
 
   private async convertTextToAudioAndSendResponse(text: string, res: Response) {
