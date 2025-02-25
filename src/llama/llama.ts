@@ -1,6 +1,6 @@
 import { Message, Ollama } from "ollama";
 import { CustomEventEmitter } from "../utils/custom-event-emitter.js";
-import weaviate, { Collection } from "weaviate-client";
+import weaviate, { Collection, WeaviateClient } from "weaviate-client";
 
 const DEFAULT_SYSTEM_MESSAGE = `You are Rimuru. This is a conversation between Rimuru and a number of people in a group chat.
 Your character is Rimuru Tempest from That Time I got Reincarnated as a Slime.
@@ -105,6 +105,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
   private readonly ollama: Ollama;
   private isInited: boolean;
   private readonly channelIdentity: string;
+  private client: WeaviateClient | undefined;
   private memoryCollection: Collection<MemoryModel, string> | undefined;
   private readonly systemMessage: string;
   private readonly model: string;
@@ -126,7 +127,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
 
   private async init() {
     // Connect to vector database and grab a collection instance
-    const client = await weaviate.connectToLocal({
+    this.client = await weaviate.connectToLocal({
       host: "192.168.1.101", // URL only, no http prefix
       port: 8080,
       grpcPort: 50051, // Default is 50051, WCD uses 443
@@ -135,12 +136,12 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
 
     const memoryName = `Memory_${this.channelIdentity}`;
     let collection: Collection<MemoryModel, string> | undefined;
-    if (!(await client.collections.exists(memoryName))) {
-      collection = await client.collections.create<MemoryModel>({
+    if (!(await this.client.collections.exists(memoryName))) {
+      collection = await this.client.collections.create<MemoryModel>({
         name: memoryName,
       });
     } else {
-      collection = client.collections.get<MemoryModel>(memoryName);
+      collection = this.client.collections.get<MemoryModel>(memoryName);
     }
 
     this.memoryCollection = collection;
@@ -388,5 +389,10 @@ ${relevantMessages.join("\n\n")}
     });
 
     return finalText;
+  }
+
+  public async deleteConversation() {
+    const memoryName = `Memory_${this.channelIdentity}`;
+    await this.client!.collections.delete(memoryName);
   }
 }

@@ -61,13 +61,17 @@ export class ApiServer {
     this.handleRequest = this.handleRequest.bind(this);
     this.handleVoiceRequest = this.handleVoiceRequest.bind(this);
     this.handleHistoryRequest = this.handleHistoryRequest.bind(this);
+    this.handleDeleteHistoryRequest =
+      this.handleDeleteHistoryRequest.bind(this);
     this.runOllama = this.runOllama.bind(this);
     this.runFishSpeech = this.runFishSpeech.bind(this);
     this.runRVC = this.runRVC.bind(this);
 
     this.express.post("/process", this.handleRequest);
     this.express.post("/processVoice", this.handleVoiceRequest);
-    this.express.post("/gethistory", this.handleHistoryRequest);
+    this.express.post("/getHistory", this.handleHistoryRequest);
+    this.express.post("/getHistory", this.handleHistoryRequest);
+    this.express.post("/deleteHistory", this.handleDeleteHistoryRequest);
   }
 
   public start() {
@@ -180,6 +184,17 @@ export class ApiServer {
     return res.json(await llama.llama.getChatHistory(limit));
   }
 
+  private async handleDeleteHistoryRequest(req: Request, res: Response) {
+    const { userId } = req.body as HistoryRequest;
+    if (!userId) {
+      return res.status(400).json({ detail: "UserId is required" });
+    }
+
+    await this.createLlama(userId).llama.deleteConversation();
+
+    return res.status(200).json({ detail: "Conversation was deleted" });
+  }
+
   private createLlama(userId: string) {
     let llama = this.llamas.find((x) => x.userId === userId);
     if (!llama) {
@@ -231,6 +246,8 @@ export class ApiServer {
       .replace(" rimaru", " Rimuru")
       .replace(" Remeru", " Rimuru")
       .replace(" remeru", " Rimuru")
+      .replace(" Remer", " Rimuru")
+      .replace(" remer", " Rimuru")
       .replace(" Imaru", " Rimuru")
       .replace(" imaru", " Rimuru");
   }
