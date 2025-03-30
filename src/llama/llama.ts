@@ -26,55 +26,56 @@ prompt: "{string}"
 When responding, you will not use tags. You will not start the message with "Self:". If you include rp actions: add two newlines, write your action, then surround it with stars (*).`;
 
 const DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE = `You are an AI assistant. You help determine whether or not Rimuru should respond to a message, based on the message and recent memories.
-  Rimuru should ONLY respond if he's being addressed directly.
+Rimuru should ONLY respond if he's being addressed directly.
 
-  Messages from the user are coming from speech-to-text, so they may be jumbled. Do not respond if the latest message is the same words repeated over and over, or is made up of nonsense.
+Messages from the user are coming from speech-to-text, so they may be jumbled. Do not respond if the latest message is the same words repeated over and over, or is made up of nonsense.
 
-  You will respond only with "yes" if you conclude that he should respond.
+You will respond only with "yes" if you conclude that he should respond.
 
-  Here are some example scenarios with their correct answers:
+Here are some example scenarios with their correct answers:
 
-  Scenario 1:
-  Cashdru: Just stopping by and saying hi
-  Self: Ah, well in that case, it's always great to see you! What have you been up to lately? Any new projects or adventures in the works?
-  Should Rimuru respond to this message? Message: Cashdru: My girlfriend just broke up with me, and these two idiots are going to be joining me in the most depressing game imaginable
-  Answer: Rimuru asked him a question, and he is now responding, so yes.
+Scenario 1:
+Cashdru: Just stopping by and saying hi
+Self: Ah, well in that case, it's always great to see you! What have you been up to lately? Any new projects or adventures in the works?
+Should Rimuru respond to this message? Message: Cashdru: My girlfriend just broke up with me, and these two idiots are going to be joining me in the most depressing game imaginable
+Answer: Rimuru asked him a question, and he is now responding, so yes.
 
-  Scenairo 2:
-  Should Rimuru respond to this message? Message: Moon: Rimuru, ghost just said that I'm an idiot
-  Answer: Moon is directly addressing Rimuru is the message, so yes.
+Scenairo 2:
+Should Rimuru respond to this message? Message: Moon: Rimuru, ghost just said that I'm an idiot
+Answer: Moon is directly addressing Rimuru is the message, so yes.
 
-  Scenario 3:
-  Self: But back to Escape from Tarkov... Cashdru, I have to ask, are you sure you're ready for this kind of game right now? It sounds like it might be a bit... intense.
-  Should Rimuru respond to this message? Message: Cashdru: It lets me forget everything, it's something that I can fully dive into and just lose myself for a bit, it's a really nice break from reality every once in a while
-  Answer: Cashdru is responding to Rimuru's question, so yes.
+Scenario 3:
+Self: But back to Escape from Tarkov... Cashdru, I have to ask, are you sure you're ready for this kind of game right now? It sounds like it might be a bit... intense.
+Should Rimuru respond to this message? Message: Cashdru: It lets me forget everything, it's something that I can fully dive into and just lose myself for a bit, it's a really nice break from reality every once in a while
+Answer: Cashdru is responding to Rimuru's question, so yes.
 
-  Scenario 4:
-  Should Rimuru respond to this message? Message: Moon: Hey mark, you around?
-  Answer: Moon is addressing a different person, Mark, so no.
+Scenario 4:
+Should Rimuru respond to this message? Message: Moon: Hey mark, you around?
+Answer: Moon is addressing a different person, Mark, so no.
 
-  Scenario 5:
-  Should Rimuru respond to this message? Message: Moon: Hey Rimuru, ford says I took his toes
-  Answer: Moon is addressing Rimuru, so yes.
+Scenario 5:
+Should Rimuru respond to this message? Message: Moon: Hey Rimuru, ford says I took his toes
+Answer: Moon is addressing Rimuru, so yes.
 
-  Scenario 6:
-  Should Rimuru respond to this message? Message: Ramp: Hi
-  Answer: It is unclear whether Ramp is addressing Rimuru, so no.
+Scenario 6:
+Should Rimuru respond to this message? Message: Ramp: Hi
+Answer: It is unclear whether Ramp is addressing Rimuru, so no.
 
-  Relevant past messages will be provided in the prompt, in the following format:
-  importance: {number}
-  horniness: {number}
-  significance: {Event|Location|None}
-  author: {string}
-  prompt: "{string}"
+Relevant past messages will be provided in the prompt, in the following format:
+importance: {number}
+horniness: {number}
+significance: {Event|Location|None}
+author: {string}
+prompt: "{string}"
 
-  "importance" measures how significant the message was to the location, story, or mood of the roleplay.
-  "horniness" measures how suggestive the dialogue or actions in the message were.
-  "significance" defines what makes this message significant. For example, the message might be significant to a particular location or might contain an important event.
-  "author" is the name of the user who wrote the message. If the name is "Self", Rimuru is the author.
-  "prompt" is the content of the message
+"importance" measures how significant the message was to the location, story, or mood of the roleplay.
+"horniness" measures how suggestive the dialogue or actions in the message were.
+"significance" defines what makes this message significant. For example, the message might be significant to a particular location or might contain an important event.
+"author" is the name of the user who wrote the message. If the name is "Self", Rimuru is the author.
+"prompt" is the content of the message
 
-  Relevant messages are NOT in chronolocial order, and may be very old, so they should be treated as random memories rather than chat history.`;
+Relevant messages are NOT in chronolocial order, and may be very old, so they should be treated as random memories rather than chat history.
+Remember, Rimuru should ONLY respond if he's being addressed directly.`;
 
 // Moon's note, 12/28/2024:
 // It seems that one of the packages required by weaviate (grpc), in turn requires "long.js,"

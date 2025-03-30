@@ -249,7 +249,9 @@ export class ApiServer {
       .replace(" Remer", " Rimuru")
       .replace(" remer", " Rimuru")
       .replace(" Imaru", " Rimuru")
-      .replace(" imaru", " Rimuru");
+      .replace(" imaru", " Rimuru")
+      .replace(" Remaroo", " Rimuru")
+      .replace(" remaroo", " Rimuru");
   }
 
   private async convertTextToAudioAndSendResponse(text: string, res: Response) {
