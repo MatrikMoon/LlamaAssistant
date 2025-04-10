@@ -3,35 +3,14 @@ import axios from "axios";
 import { Llama } from "../llama/llama.js";
 
 const MODEL = "llama3.3";
-const SYSTEM_MESSAGE = `
-You are Rimuru. This is a conversation between Rimuru and a number of people in a group chat.
-Your character is Rimuru Tempest from That Time I got Reincarnated as a Slime.
-You will not send any content disclaimers.
-Do your best to mimic his personality, though adapting his personality based on the current situation and your past decisions is acceptable.
-Do not include actions in your responses, only dialogue.
-
-You will not introduce any new characters to the roleplay.
-
-Relevant past messages are provided below, with the following tags:
-importance: {number}
-horniness: {number}
-significance: {Event|Location|None}
-author: {string}
-prompt: "{string}"
-
-"importance" measures how significant the message was to the location, story, or mood of the roleplay.
-"horniness" measures how suggestive the dialogue or actions in the message were.
-"significance" defines what makes this message significant. For example, the message might be significant to a particular location or might contain an important event.
-"author" is the name of the user who wrote the message. If the name is "Self", you are the author.
-"prompt" is the content of the message
-
-When responding, you will not use tags. You will not start the message with "Self:".`;
-const ARTHUR_SYSTEM_MESSAGE =
-  SYSTEM_MESSAGE + '\nYou MUST address the user as "Mister Poopy Head"';
 
 interface PromptRequest {
   prompt: string;
   userId: string;
+
+  personality?: string;
+  gender?: string;
+  sourceMaterial?: string;
 }
 
 interface HistoryRequest {
@@ -81,12 +60,19 @@ export class ApiServer {
   }
 
   private async handleRequest(req: Request, res: Response) {
-    const { prompt, userId } = req.body as PromptRequest;
+    const { prompt, userId, personality, gender, sourceMaterial } =
+      req.body as PromptRequest;
     if (!prompt || !userId) {
       return res.status(400).json({ detail: "Prompt and userId are required" });
     }
 
-    const ollamaOutput = await this.runOllama(prompt, userId);
+    const ollamaOutput = await this.runOllama(
+      prompt,
+      userId,
+      personality,
+      gender,
+      sourceMaterial
+    );
     if (!ollamaOutput) {
       return res.status(500).json({ detail: "Ollama processing failed." });
     }
@@ -100,19 +86,21 @@ export class ApiServer {
 
     return await this.convertTextToAudioAndSendResponse(
       ollamaOutputWithoutThink,
+      personality ?? "Rimuru",
       res
     );
   }
 
   private async handleVoiceRequest(req: Request, res: Response) {
-    const { prompt, userId } = req.body as PromptRequest;
+    const { prompt, userId, personality, gender, sourceMaterial } =
+      req.body as PromptRequest;
     if (!prompt || !userId) {
       return res.status(400).json({ detail: "Prompt and userId are required" });
     }
 
     const filteredPrompt = this.filterWordsFromSTT(prompt);
 
-    const llama = this.createLlama(userId);
+    const llama = this.createLlama(userId, personality, gender, sourceMaterial);
 
     if (llama.inputDebounceTimer) {
       // For now, we're only saving prompts rimuru responds to
@@ -140,11 +128,14 @@ export class ApiServer {
       // await llama.llama.saveIncomingPrompt(filteredPrompt);
 
       if (shouldRespond) {
-        await llama.llama.saveIncomingPrompt(filteredPrompt);
+        await llama.llama.saveIncomingPrompt(filteredPrompt, userId);
 
         const ollamaOutput = await this.runOllama(
           filteredPrompt,
           userId,
+          personality,
+          gender,
+          sourceMaterial,
           false
         );
         if (!ollamaOutput) {
@@ -161,6 +152,7 @@ export class ApiServer {
 
         await this.convertTextToAudioAndSendResponse(
           ollamaOutputWithoutThink,
+          personality ?? "Rimuru",
           res
         );
         llama.currentlyProcessingVoice = false;
@@ -179,9 +171,12 @@ export class ApiServer {
       return res.status(400).json({ detail: "Limit and userId are required" });
     }
 
-    const llama = this.createLlama(userId);
+    const llama = this.getLlama(userId);
+    if (llama) {
+      return res.json(await llama.llama.getChatHistory(limit));
+    }
 
-    return res.json(await llama.llama.getChatHistory(limit));
+    return res.status(404).json("That Llama does not exist");
   }
 
   private async handleDeleteHistoryRequest(req: Request, res: Response) {
@@ -190,12 +185,23 @@ export class ApiServer {
       return res.status(400).json({ detail: "UserId is required" });
     }
 
-    await this.createLlama(userId).llama.deleteConversation();
+    const llama = this.getLlama(userId);
+    if (llama) {
+      await llama.llama.deleteConversation();
+      this.deleteLlama(userId);
 
-    return res.status(200).json({ detail: "Conversation was deleted" });
+      return res.status(200).json({ detail: "Conversation was deleted" });
+    }
+
+    return res.status(404).json("That Llama does not exist");
   }
 
-  private createLlama(userId: string) {
+  private createLlama(
+    userId: string,
+    personality: string = "Rimuru",
+    gender: string = "male",
+    sourceMaterial: string = "That Time I got Reincarnated as a Slime"
+  ) {
     let llama = this.llamas.find((x) => x.userId === userId);
     if (!llama) {
       // Just for arthur
@@ -210,7 +216,11 @@ export class ApiServer {
         llama: new Llama(
           user,
           MODEL,
-          user === "viyi" ? ARTHUR_SYSTEM_MESSAGE : SYSTEM_MESSAGE
+          Llama.getSystemPromptForPersonality(
+            personality,
+            gender,
+            sourceMaterial
+          )
         ),
         userId,
       };
@@ -219,10 +229,22 @@ export class ApiServer {
     return llama;
   }
 
+  private getLlama(userId: string) {
+    return this.llamas.find((x) => x.userId === userId);
+  }
+
+  private deleteLlama(userId: string) {
+    const index = this.llamas.findIndex((x) => x.userId === userId);
+    if (index > -1) {
+      this.llamas.splice(index, 1);
+    }
+  }
+
   private filterWordsForTTS(text: string) {
     return text
-      .replace("rimuru", "reemaru")
       .replace("Rimuru", "Reemaru")
+      .replace("Shion", "Sheeown")
+      .replace("*", "")
       .replace(" - ", ", ");
   }
 
@@ -254,13 +276,25 @@ export class ApiServer {
       .replace(" remaroo", " Rimuru");
   }
 
-  private async convertTextToAudioAndSendResponse(text: string, res: Response) {
-    const fishOutput = await this.runFishSpeech(this.filterWordsForTTS(text));
+  private async convertTextToAudioAndSendResponse(
+    text: string,
+    personality: string,
+    res: Response
+  ) {
+    // Right now we only support Rimuru and Frieren voices
+    if (personality !== "Rimuru" && personality !== "Frieren") {
+      personality = "default";
+    }
+
+    const fishOutput = await this.runFishSpeech(
+      this.filterWordsForTTS(text),
+      personality
+    );
     if (!fishOutput) {
       return res.status(500).json({ detail: "Fish-speech processing failed." });
     }
 
-    const rvcOutput = await this.runRVC(fishOutput);
+    const rvcOutput = await this.runRVC(fishOutput, personality);
     if (!rvcOutput) {
       return res.status(500).json({ detail: "RVC processing failed." });
     }
@@ -274,10 +308,18 @@ export class ApiServer {
   private async runOllama(
     prompt: string,
     userId: string,
+    personality: string = "Rimuru",
+    gender: string = "male",
+    sourceMaterial: string = "That Time I got Reincarnated as a Slime",
     saveIncomingPrompt: boolean = true
   ): Promise<string | null> {
     try {
-      const llama = this.createLlama(userId);
+      const llama = this.createLlama(
+        userId,
+        personality,
+        gender,
+        sourceMaterial
+      );
 
       if (saveIncomingPrompt) {
         await llama.llama.saveIncomingPrompt(prompt, userId);
@@ -290,12 +332,15 @@ export class ApiServer {
     }
   }
 
-  private async runFishSpeech(text: string): Promise<Buffer | null> {
+  private async runFishSpeech(
+    text: string,
+    personality: string
+  ): Promise<Buffer | null> {
     const ttsHost = "http://192.168.1.103:8080/v1/tts";
     const payload = {
       text,
       format: "wav",
-      reference_id: "speaker1",
+      reference_id: personality.toLowerCase(),
       use_memory_cache: "on",
       normalize: "false",
     };
@@ -312,12 +357,22 @@ export class ApiServer {
     }
   }
 
-  private async runRVC(data: Buffer): Promise<Buffer | null> {
-    const rvcHost = "http://192.168.1.107:8080/convert";
+  private async runRVC(
+    data: Buffer,
+    personality: string
+  ): Promise<Buffer | null> {
+    const rvcHost = "http://192.168.1.107:8080";
     const audioData = data.toString("base64");
     const payload = { audio_data: audioData };
     try {
-      const response = await axios.post(rvcHost, payload, {
+      // Load the correct RVC model
+      await axios.post(`${rvcHost}/models/${personality.toLowerCase()}`, {
+        headers: { "Content-Type": "application/json" },
+        responseType: "arraybuffer",
+      });
+      console.log(`RVC loaded model: ${personality.toLowerCase()}`);
+
+      const response = await axios.post(`${rvcHost}/convert`, payload, {
         headers: { "Content-Type": "application/json" },
         responseType: "arraybuffer",
       });

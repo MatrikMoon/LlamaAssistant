@@ -2,10 +2,10 @@ import { Message, Ollama } from "ollama";
 import { CustomEventEmitter } from "../utils/custom-event-emitter.js";
 import weaviate, { Collection, WeaviateClient } from "weaviate-client";
 
-const DEFAULT_SYSTEM_MESSAGE = `You are Rimuru. This is a conversation between Rimuru and a number of people in a group chat.
-Your character is Rimuru Tempest from That Time I got Reincarnated as a Slime.
+const DEFAULT_SYSTEM_MESSAGE = `You are {personality}. This is a conversation between {personality} and a number of people in a group chat.
+Your character is {personality} from {sourceMaterial}.
 You will not send any content disclaimers.
-Do your best to mimic his personality, though adapting his personality based on the current situation and your past decisions is acceptable.
+Do your best to mimic {pronounHis} personality, though adapting {pronounHis} personality based on the current situation and your past decisions is acceptable.
 Do your best to follow the user's lead in message formatting.
 
 You will not introduce any new characters to the roleplay.
@@ -25,41 +25,41 @@ prompt: "{string}"
 
 When responding, you will not use tags. You will not start the message with "Self:". If you include rp actions: add two newlines, write your action, then surround it with stars (*).`;
 
-const DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE = `You are an AI assistant. You help determine whether or not Rimuru should respond to a message, based on the message and recent memories.
-Rimuru should ONLY respond if he's being addressed directly.
+const DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE = `You are an AI assistant. You help determine whether or not {personality} should respond to a message, based on the message and recent memories.
+{personality} should ONLY respond if {pronounHe}'s being addressed directly.
 
 Messages from the user are coming from speech-to-text, so they may be jumbled. Do not respond if the latest message is the same words repeated over and over, or is made up of nonsense.
 
-You will respond only with "yes" if you conclude that he should respond.
+You will respond only with "yes" if you conclude that {pronounHe} should respond.
 
 Here are some example scenarios with their correct answers:
 
 Scenario 1:
 Cashdru: Just stopping by and saying hi
 Self: Ah, well in that case, it's always great to see you! What have you been up to lately? Any new projects or adventures in the works?
-Should Rimuru respond to this message? Message: Cashdru: My girlfriend just broke up with me, and these two idiots are going to be joining me in the most depressing game imaginable
-Answer: Rimuru asked him a question, and he is now responding, so yes.
+Should {personality} respond to this message? Message: Cashdru: My girlfriend just broke up with me, and these two idiots are going to be joining me in the most depressing game imaginable
+Answer: {personality} asked Cashdru a question, and he is now responding, so yes.
 
 Scenairo 2:
-Should Rimuru respond to this message? Message: Moon: Rimuru, ghost just said that I'm an idiot
-Answer: Moon is directly addressing Rimuru is the message, so yes.
+Should {personality} respond to this message? Message: Moon: {personality}, ghost just said that I'm an idiot
+Answer: Moon is directly addressing {personality} is the message, so yes.
 
 Scenario 3:
 Self: But back to Escape from Tarkov... Cashdru, I have to ask, are you sure you're ready for this kind of game right now? It sounds like it might be a bit... intense.
-Should Rimuru respond to this message? Message: Cashdru: It lets me forget everything, it's something that I can fully dive into and just lose myself for a bit, it's a really nice break from reality every once in a while
-Answer: Cashdru is responding to Rimuru's question, so yes.
+Should {personality} respond to this message? Message: Cashdru: It lets me forget everything, it's something that I can fully dive into and just lose myself for a bit, it's a really nice break from reality every once in a while
+Answer: Cashdru is responding to {personality}'s question, so yes.
 
 Scenario 4:
-Should Rimuru respond to this message? Message: Moon: Hey mark, you around?
+Should {personality} respond to this message? Message: Moon: Hey mark, you around?
 Answer: Moon is addressing a different person, Mark, so no.
 
 Scenario 5:
-Should Rimuru respond to this message? Message: Moon: Hey Rimuru, ford says I took his toes
-Answer: Moon is addressing Rimuru, so yes.
+Should {personality} respond to this message? Message: Moon: Hey {personality}, ford says I took his toes
+Answer: Moon is addressing {personality}, so yes.
 
 Scenario 6:
-Should Rimuru respond to this message? Message: Ramp: Hi
-Answer: It is unclear whether Ramp is addressing Rimuru, so no.
+Should {personality} respond to this message? Message: Ramp: Hi
+Answer: It is unclear whether Ramp is addressing {personality}, so no.
 
 Relevant past messages will be provided in the prompt, in the following format:
 importance: {number}
@@ -71,11 +71,11 @@ prompt: "{string}"
 "importance" measures how significant the message was to the location, story, or mood of the roleplay.
 "horniness" measures how suggestive the dialogue or actions in the message were.
 "significance" defines what makes this message significant. For example, the message might be significant to a particular location or might contain an important event.
-"author" is the name of the user who wrote the message. If the name is "Self", Rimuru is the author.
+"author" is the name of the user who wrote the message. If the name is "Self", {personality} is the author.
 "prompt" is the content of the message
 
 Relevant messages are NOT in chronolocial order, and may be very old, so they should be treated as random memories rather than chat history.
-Remember, Rimuru should ONLY respond if he's being addressed directly.`;
+Remember, {personality} should ONLY respond if {pronounHe}'s being addressed directly.`;
 
 // Moon's note, 12/28/2024:
 // It seems that one of the packages required by weaviate (grpc), in turn requires "long.js,"
@@ -150,6 +150,57 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     this.isInited = true;
   }
 
+  private static convertSystemPromptForPersonality(
+    baseSystemPrompt: string,
+    personality: string,
+    gender: string,
+    sourceMaterial: string
+  ) {
+    let newSystemPrompt = baseSystemPrompt
+      .replace("{personality}", personality)
+      .replace("{sourceMaterial}", sourceMaterial);
+    if (gender === "male") {
+      newSystemPrompt = newSystemPrompt
+        .replace("{pronounHis}", "his")
+        .replace("{PronounHis}", "His")
+        .replace("{pronounHe}", "he")
+        .replace("{PronounHe}", "He");
+    } else if (gender === "female") {
+      newSystemPrompt = newSystemPrompt
+        .replace("{pronounHis}", "her")
+        .replace("{PronounHis}", "Her")
+        .replace("{pronounHe}", "she")
+        .replace("{PronounHe}", "She");
+    }
+    return newSystemPrompt;
+  }
+
+  public static getSystemPromptForPersonality(
+    personality: string,
+    pronoun: string,
+    sourceMaterial: string
+  ) {
+    return this.convertSystemPromptForPersonality(
+      DEFAULT_SYSTEM_MESSAGE,
+      personality,
+      pronoun,
+      sourceMaterial
+    );
+  }
+
+  public static getShouldRespondForPersonality(
+    personality: string,
+    pronoun: string,
+    sourceMaterial: string
+  ) {
+    return this.convertSystemPromptForPersonality(
+      DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE,
+      personality,
+      pronoun,
+      sourceMaterial
+    );
+  }
+
   public async shouldRespond(prompt: string, userIdentity: string = "User") {
     if (!this.isInited) {
       await this.init();
@@ -164,10 +215,10 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     // Build text for recent memories
     const recentMessages = mostRecentMemory.objects?.toReversed().map((x) => {
       return `importance: ${x.properties.importance}
-  horniness: ${x.properties.horniness}
-  significance: ${x.properties.significance}
-  author: ${x.properties.author}
-  prompt: "${x.properties.prompt}"`;
+horniness: ${x.properties.horniness}
+significance: ${x.properties.significance}
+author: ${x.properties.author}
+prompt: "${x.properties.prompt}"`;
     });
 
     // Generate embed for prompt, so we can do semantic lookup on other saved embeds
@@ -191,17 +242,17 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
       )
       .map((x) => {
         return `importance: ${x.properties.importance}
-  horniness: ${x.properties.horniness}
-  significance: ${x.properties.significance}
-  author: ${x.properties.author}
-  prompt: "${x.properties.prompt}"`;
+horniness: ${x.properties.horniness}
+significance: ${x.properties.significance}
+author: ${x.properties.author}
+prompt: "${x.properties.prompt}"`;
       });
 
     const context = `Here are some past messages that may be relevant to what the user is talking about. These may not be in chronological order, so only use them for remembering events or places' descriptions:
-  ${relevantMessages.join("\n\n")}
+${relevantMessages.join("\n\n")}
 
-  Here are the last 5 messages in the chat, in chronological order:
-  ${recentMessages.join("\n\n")}`;
+Here are the last 5 messages in the chat, in chronological order:
+${recentMessages.join("\n\n")}`;
 
     // Generate the response
     const response = await this.ollama.generate({
@@ -269,12 +320,16 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     });
   }
 
+  // Moon's note: userIdentity is currently unused because the user tag adding is handled in saveIncomingPrompt
+  // --aka, we've already done it
   public async runPrompt(prompt: string, userIdentity: string = "User") {
     if (!this.isInited) {
       await this.init();
     }
 
     // Commented out as I haven't figured out if I want/need tags in the recent chat history
+    // Later moon's note: this is now handled by actually populating previous "messages" with
+    // the message history, below
     //         const recentMessages = mostRecentMemory.objects?.map(x => {
     //             return (
     //                 `importance: ${x.properties.importance}
@@ -341,7 +396,7 @@ ${relevantMessages.join("\n\n")}
     messages.push({ role: "system", content: systemMessage });
 
     // Add the last 100 messages to chat history (the current prompt will be included, since `shouldRespond` added it to memory)
-    for (const message of mostRecentMemory.objects?.reverse()) {
+    for (const message of mostRecentMemory.objects?.toReversed()) {
       const isSelfMessage = message.properties.author === "Self";
       const content = isSelfMessage
         ? message.properties.prompt
