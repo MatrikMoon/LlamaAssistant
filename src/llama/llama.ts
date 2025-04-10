@@ -7,6 +7,7 @@ Your character is {personality} from {sourceMaterial}.
 You will not send any content disclaimers.
 Do your best to mimic {pronounHis} personality, though adapting {pronounHis} personality based on the current situation and your past decisions is acceptable.
 Do your best to follow the user's lead in message formatting.
+{actionsAllowed}
 
 You will not introduce any new characters to the roleplay.
 
@@ -154,7 +155,8 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     baseSystemPrompt: string,
     personality: string,
     gender: string,
-    sourceMaterial: string
+    sourceMaterial: string,
+    allowRpActions: boolean = false
   ) {
     let newSystemPrompt = baseSystemPrompt
       .replace("{personality}", personality)
@@ -172,6 +174,12 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
         .replace("{pronounHe}", "she")
         .replace("{PronounHe}", "She");
     }
+    newSystemPrompt = newSystemPrompt.replace(
+      "{actionsAllowed}",
+      allowRpActions
+        ? ""
+        : "Do not include actions in your responses, only dialogue."
+    );
     return newSystemPrompt;
   }
 
@@ -448,6 +456,10 @@ ${relevantMessages.join("\n\n")}
   }
 
   public async deleteConversation() {
+    if (!this.isInited) {
+      await this.init();
+    }
+
     const memoryName = `Memory_${this.channelIdentity}`;
     await this.client!.collections.delete(memoryName);
   }

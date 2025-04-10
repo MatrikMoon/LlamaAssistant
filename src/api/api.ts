@@ -49,7 +49,6 @@ export class ApiServer {
     this.express.post("/process", this.handleRequest);
     this.express.post("/processVoice", this.handleVoiceRequest);
     this.express.post("/getHistory", this.handleHistoryRequest);
-    this.express.post("/getHistory", this.handleHistoryRequest);
     this.express.post("/deleteHistory", this.handleDeleteHistoryRequest);
   }
 
@@ -171,8 +170,11 @@ export class ApiServer {
       return res.status(400).json({ detail: "Limit and userId are required" });
     }
 
-    const llama = this.getLlama(userId);
+    const llama = this.createLlama(userId);
     if (llama) {
+      // We don't want this llama to stick around, just in case the user wasn't done typing...
+      // Moon's note: this is nasty, but I'll remnid you this is only a debug interface
+      this.deleteLlama(userId);
       return res.json(await llama.llama.getChatHistory(limit));
     }
 
@@ -185,7 +187,7 @@ export class ApiServer {
       return res.status(400).json({ detail: "UserId is required" });
     }
 
-    const llama = this.getLlama(userId);
+    const llama = this.createLlama(userId);
     if (llama) {
       await llama.llama.deleteConversation();
       this.deleteLlama(userId);
@@ -282,7 +284,11 @@ export class ApiServer {
     res: Response
   ) {
     // Right now we only support Rimuru and Frieren voices
-    if (personality !== "Rimuru" && personality !== "Frieren") {
+    if (
+      personality !== "Rimuru" &&
+      personality !== "Frieren" &&
+      personality !== "Gura"
+    ) {
       personality = "default";
     }
 
