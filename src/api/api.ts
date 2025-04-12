@@ -84,6 +84,7 @@ export class ApiServer {
     }
 
     return await this.convertTextToAudioAndSendResponse(
+      prompt,
       ollamaOutputWithoutThink,
       personality ?? "Rimuru",
       res
@@ -150,6 +151,7 @@ export class ApiServer {
         }
 
         await this.convertTextToAudioAndSendResponse(
+          filteredPrompt,
           ollamaOutputWithoutThink,
           personality ?? "Rimuru",
           res
@@ -279,7 +281,8 @@ export class ApiServer {
   }
 
   private async convertTextToAudioAndSendResponse(
-    text: string,
+    respondingTo: string,
+    response: string,
     personality: string,
     res: Response
   ) {
@@ -293,7 +296,7 @@ export class ApiServer {
     }
 
     const fishOutput = await this.runFishSpeech(
-      this.filterWordsForTTS(text),
+      this.filterWordsForTTS(response),
       personality
     );
     if (!fishOutput) {
@@ -306,7 +309,8 @@ export class ApiServer {
     }
 
     return res.json({
-      response: text,
+      respondingTo,
+      response,
       audio: rvcOutput.toString("base64"),
     });
   }
