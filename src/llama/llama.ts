@@ -39,28 +39,34 @@ Scenario 1:
 Cashdru: Just stopping by and saying hi
 Self: Ah, well in that case, it's always great to see you! What have you been up to lately? Any new projects or adventures in the works?
 Should {personality} respond to this message? Message: Cashdru: My girlfriend just broke up with me, and these two idiots are going to be joining me in the most depressing game imaginable
-Answer: {personality} asked Cashdru a question, and he is now responding, so yes.
+You should answer: Yes.
+Reasoning: {personality} asked Cashdru a question, and he is now responding, so yes.
 
 Scenairo 2:
 Should {personality} respond to this message? Message: Moon: {personality}, ghost just said that I'm an idiot
-Answer: Moon is directly addressing {personality} is the message, so yes.
+You should answer: Yes.
+Reasoning: Moon is directly addressing {personality} is the message, so yes.
 
 Scenario 3:
 Self: But back to Escape from Tarkov... Cashdru, I have to ask, are you sure you're ready for this kind of game right now? It sounds like it might be a bit... intense.
 Should {personality} respond to this message? Message: Cashdru: It lets me forget everything, it's something that I can fully dive into and just lose myself for a bit, it's a really nice break from reality every once in a while
-Answer: Cashdru is responding to {personality}'s question, so yes.
+You should answer: Yes.
+Reasoning: Cashdru is responding to {personality}'s question, so yes.
 
 Scenario 4:
 Should {personality} respond to this message? Message: Moon: Hey mark, you around?
-Answer: Moon is addressing a different person, Mark, so no.
+You should answer: No.
+Reasoning: Moon is addressing a different person, Mark, so no.
 
 Scenario 5:
 Should {personality} respond to this message? Message: Moon: Hey {personality}, ford says I took his toes
-Answer: Moon is addressing {personality}, so yes.
+You should answer: Yes.
+Reasoning: Moon is addressing {personality}, so yes.
 
 Scenario 6:
 Should {personality} respond to this message? Message: Ramp: Hi
-Answer: It is unclear whether Ramp is addressing {personality}, so no.
+You should answer: No.
+Reasoning: It is unclear whether Ramp is addressing {personality}, so no.
 
 Relevant past messages will be provided in the prompt, in the following format:
 importance: {number}
@@ -209,7 +215,11 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     );
   }
 
-  public async shouldRespond(prompt: string, userIdentity: string = "User") {
+  public async shouldRespond(
+    prompt: string,
+    userIdentity: string = "User",
+    systemMessage: string
+  ) {
     if (!this.isInited) {
       await this.init();
     }
@@ -266,7 +276,7 @@ ${recentMessages.join("\n\n")}`;
     const response = await this.ollama.generate({
       model: this.model,
       prompt: `${context}\n\nShould Rimuru respond to this message? Message: ${userIdentity}: ${prompt}`,
-      system: DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE,
+      system: systemMessage,
       keep_alive: "1h",
     });
 

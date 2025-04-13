@@ -121,7 +121,12 @@ export class ApiServer {
 
       const shouldRespond = await llama.llama.shouldRespond(
         filteredPrompt,
-        userId
+        userId,
+        Llama.getShouldRespondForPersonality(
+          personality ?? "Rimuru",
+          gender ?? "male",
+          sourceMaterial ?? "That Time I got Reincarnated as a Slime"
+        )
       );
 
       // For now, we're only saving prompts rimuru responds to
