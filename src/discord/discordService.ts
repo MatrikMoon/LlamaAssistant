@@ -94,7 +94,8 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
     // Determine whether we should respond
     const shouldRespond = await channelLlama.llama.shouldRespond(
       message.content,
-      message.author.displayName
+      message.author.displayName,
+      "This is a placeholder prompt. Remind me to change it"
     );
 
     // Save the incoming message as a memory
