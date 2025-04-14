@@ -217,7 +217,8 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
 
   public async shouldRespond(
     prompt: string,
-    userIdentity: string = "User",
+    userIdentity: string,
+    personality: string,
     systemMessage: string
   ) {
     if (!this.isInited) {
@@ -275,7 +276,7 @@ ${recentMessages.join("\n\n")}`;
     // Generate the response
     const response = await this.ollama.generate({
       model: this.model,
-      prompt: `${context}\n\nShould Rimuru respond to this message? Message: ${userIdentity}: ${prompt}`,
+      prompt: `${context}\n\nShould ${personality} respond to this message? Message: ${userIdentity}: ${prompt}`,
       system: systemMessage,
       keep_alive: "1h",
     });

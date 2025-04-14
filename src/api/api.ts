@@ -122,6 +122,7 @@ export class ApiServer {
       const shouldRespond = await llama.llama.shouldRespond(
         filteredPrompt,
         userId,
+        personality ?? "Rimuru",
         Llama.getShouldRespondForPersonality(
           personality ?? "Rimuru",
           gender ?? "male",

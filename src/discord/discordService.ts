@@ -95,6 +95,7 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
     const shouldRespond = await channelLlama.llama.shouldRespond(
       message.content,
       message.author.displayName,
+      "This is a placeholder personality. Remind me to change it",
       "This is a placeholder prompt. Remind me to change it"
     );
 
