@@ -1,6 +1,8 @@
-import { Message, Ollama } from "ollama";
+import { ChatResponse, Message, Ollama } from "ollama";
 import { CustomEventEmitter } from "../utils/custom-event-emitter.js";
 import weaviate, { Collection, WeaviateClient } from "weaviate-client";
+import { openDoor, openDoorTool } from "./tools/openDoor.js";
+import { defaultTool, defaultToolTool } from "./tools/defaultTool.js";
 
 const DEFAULT_SYSTEM_MESSAGE = `You are {personality}. This is a conversation between {personality} and a number of people in a group chat.
 Your character is {personality} from {sourceMaterial}.
@@ -339,8 +341,53 @@ ${recentMessages.join("\n\n")}`;
     });
   }
 
+  private async processToolCalls(
+    chatResponse: ChatResponse,
+    messages: Message[]
+  ) {
+    const availableFunctions: { [key: string]: (...args: any) => any } = {
+      defaultTool: defaultTool,
+      openDoor: openDoor,
+    };
+
+    // TODO: It's not ideal that the model calls a tool no matter what. We lose
+    // precious seconds in the back-and-forth with a dummy tool. But then again,
+    // we'd lose precious seconds asking a smaller model whether or not a tool
+    // call is warranted, so... Meh?
+    if (chatResponse.message.tool_calls) {
+      // Process tool calls from the response
+      for (const tool of chatResponse.message.tool_calls) {
+        const functionToCall = availableFunctions[tool.function.name];
+        if (functionToCall) {
+          const output = functionToCall(tool.function.arguments);
+
+          // Add the function response to messages for the model to use
+          messages.push(chatResponse.message);
+          messages.push({
+            role: "tool",
+            content: output ? output.toString() : "success",
+          });
+        } else {
+          console.log("Function", tool.function.name, "not found");
+        }
+      }
+
+      // Get final response from model with function outputs
+      // TODO: The fact this doesn't stream sorta defeats the purpose of the stream on the upper level
+      // Maybe we should modify the modelfile to pick when to use tools after all. That would save
+      // time on the currently-inevitable tool call
+      return await this.ollama.chat({
+        model: this.model,
+        messages: messages,
+      });
+    }
+
+    return chatResponse;
+  }
+
   // Moon's note: userIdentity is currently unused because the user tag adding is handled in saveIncomingPrompt
   // --aka, we've already done it
+  // TODO: Dude, break this up. Is big.
   public async runPrompt(prompt: string, userIdentity: string = "User") {
     if (!this.isInited) {
       await this.init();
@@ -428,11 +475,14 @@ ${relevantMessages.join("\n\n")}
       messages,
       stream: true,
       keep_alive: "1h",
+      tools: [defaultToolTool, openDoorTool],
     });
 
     let finalText = "";
-    for await (const part of finalOutput) {
+    for await (let part of finalOutput) {
       this.emit("messageInProgress", {});
+      part = await this.processToolCalls(part, messages);
+
       finalText += part.message.content;
       process.stdout.write(part.message.content);
     }
