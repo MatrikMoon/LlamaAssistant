@@ -86,6 +86,10 @@ prompt: "{string}"
 Relevant messages are NOT in chronolocial order, and may be very old, so they should be treated as random memories rather than chat history.
 Remember, {personality} should ONLY respond if {pronounHe}'s being addressed directly.`;
 
+// Note: Maybe not needed? I'm just using an empty system message now and it seems to be doing even better than this one did
+const DEFAULT_TOOL_SYSTEM_MESSAGE = `You are are an AI assistant who decides what tools to use.
+You will resopnd with only "yes" no matter what, including any tool calls needed based on the last few messages.`;
+
 // Moon's note, 12/28/2024:
 // It seems that one of the packages required by weaviate (grpc), in turn requires "long.js,"
 // which is having some issues compiling under NodeNext. When you see that error, and you will,
@@ -341,9 +345,56 @@ ${recentMessages.join("\n\n")}`;
     });
   }
 
+  // This function evaluates the last few messages in history, and decides
+  // whether any tool use is warranted by the last message. It uses
+  // a model with a small system prompt, and short memory (3 messages),
+  // specifically for fast tool use.
+  // Note: if this becomes unreliable due to random voice input, we should
+  // probably move this to shouldRespond somehow, and have it only activate
+  // if shouldRespond is true... Maybe. But then what about the chat...
+  public async useTools(prompt: string) {
+    if (!this.isInited) {
+      await this.init();
+    }
+
+    // Get last message index and build recent chat history
+    const mostRecentMemory = await this.memoryCollection!.query.fetchObjects({
+      sort: this.memoryCollection!.sort.byCreationTime(false),
+      limit: 1,
+    });
+
+    let messages: Message[] = [];
+
+    // Add system message to message history
+    messages.push({ role: "system", content: `` });
+
+    // Add the last 3 messages to chat history (the current prompt will be included, since `shouldRespond` added it to memory)
+    for (const message of mostRecentMemory.objects.toReversed()) {
+      const isSelfMessage = message.properties.author === "Self";
+      const content = isSelfMessage
+        ? message.properties.prompt
+        : `${message.properties.author}: ${message.properties.prompt}`;
+      messages.push({ role: isSelfMessage ? "assistant" : "user", content });
+    }
+
+    // Add the message provided in the parameter
+    messages.push({ role: "user", content: prompt });
+
+    // Generate the response
+    const response = await this.ollama.chat({
+      model: this.model,
+      messages,
+      tools: [defaultToolTool, openDoorTool],
+      keep_alive: "1h",
+    });
+
+    await this.processToolCalls(response, messages, false);
+  }
+
   private async processToolCalls(
     chatResponse: ChatResponse,
-    messages: Message[]
+    messages: Message[],
+    continueAfterTool = true
   ) {
     const availableFunctions: { [key: string]: (...args: any) => any } = {
       defaultTool: defaultTool,
@@ -354,12 +405,13 @@ ${recentMessages.join("\n\n")}`;
     // precious seconds in the back-and-forth with a dummy tool. But then again,
     // we'd lose precious seconds asking a smaller model whether or not a tool
     // call is warranted, so... Meh?
+    // Moon's note: The above was written when this was still called from runPrompt
     if (chatResponse.message.tool_calls) {
       // Process tool calls from the response
       for (const tool of chatResponse.message.tool_calls) {
         const functionToCall = availableFunctions[tool.function.name];
         if (functionToCall) {
-          const output = functionToCall(tool.function.arguments);
+          const output = await functionToCall(tool.function.arguments);
 
           // Add the function response to messages for the model to use
           messages.push(chatResponse.message);
@@ -376,10 +428,12 @@ ${recentMessages.join("\n\n")}`;
       // TODO: The fact this doesn't stream sorta defeats the purpose of the stream on the upper level
       // Maybe we should modify the modelfile to pick when to use tools after all. That would save
       // time on the currently-inevitable tool call
-      return await this.ollama.chat({
-        model: this.model,
-        messages: messages,
-      });
+      return continueAfterTool
+        ? await this.ollama.chat({
+            model: this.model,
+            messages: messages,
+          })
+        : chatResponse;
     }
 
     return chatResponse;
@@ -475,14 +529,11 @@ ${relevantMessages.join("\n\n")}
       messages,
       stream: true,
       keep_alive: "1h",
-      tools: [defaultToolTool, openDoorTool],
     });
 
     let finalText = "";
     for await (let part of finalOutput) {
       this.emit("messageInProgress", {});
-      part = await this.processToolCalls(part, messages);
-
       finalText += part.message.content;
       process.stdout.write(part.message.content);
     }

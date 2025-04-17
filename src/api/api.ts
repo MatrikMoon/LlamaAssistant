@@ -119,6 +119,11 @@ export class ApiServer {
       llama.inputDebounceTimer = undefined;
       llama.currentlyProcessingVoice = true;
 
+      // Before anything, check for needed tools.
+      // Note: If this too often calls tools by accident,
+      // we may need to do it either *in* or after shouldRespond
+      await llama.llama.useTools(prompt);
+
       const shouldRespond = await llama.llama.shouldRespond(
         filteredPrompt,
         userId,
@@ -142,6 +147,7 @@ export class ApiServer {
           personality,
           gender,
           sourceMaterial,
+          false,
           false
         );
         if (!ollamaOutput) {
@@ -327,7 +333,8 @@ export class ApiServer {
     personality: string = "Rimuru",
     gender: string = "male",
     sourceMaterial: string = "That Time I got Reincarnated as a Slime",
-    saveIncomingPrompt: boolean = true
+    saveIncomingPrompt: boolean = true,
+    useTools: boolean = true
   ): Promise<string | null> {
     try {
       const llama = this.createLlama(
@@ -336,6 +343,12 @@ export class ApiServer {
         gender,
         sourceMaterial
       );
+
+      if (useTools) {
+        console.log("Using tools...");
+        await llama.llama.useTools(prompt);
+        console.log("Used.");
+      }
 
       if (saveIncomingPrompt) {
         await llama.llama.saveIncomingPrompt(prompt, userId);

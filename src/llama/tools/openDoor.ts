@@ -4,8 +4,8 @@ export async function openDoor() {
   const toolHost = "http://192.168.1.105:8000/tools/door";
   try {
     const response = await axios.post(toolHost);
-    console.log(`Tool server returned ${response.data.byteLength} bytes`);
-    return Buffer.from(response.data);
+    console.log(`Tool server returned ${response.data?.byteLength} bytes`);
+    return response.data ? Buffer.from(response.data) : undefined;
   } catch (error) {
     console.error(`Tool server error: ${error}`);
     return null;
