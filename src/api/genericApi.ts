@@ -379,15 +379,20 @@ export class GenericApi {
       return { status: 500, message: "Fish-speech processing failed." };
     }
 
-    const rvcOutput = await this.runRVC(fishOutput, personality);
-    if (!rvcOutput) {
-      return { status: 500, message: "RVC processing failed." };
+    let finalOutput = fishOutput;
+    if (personality !== "default") {
+      const rvcOutput = await this.runRVC(fishOutput, personality);
+      if (!rvcOutput) {
+        return { status: 500, message: "RVC processing failed." };
+      }
+
+      finalOutput = rvcOutput;
     }
 
     return {
       respondingTo,
       response,
-      audio: rvcOutput.toString("base64"),
+      audio: finalOutput.toString("base64"),
     };
   }
 
