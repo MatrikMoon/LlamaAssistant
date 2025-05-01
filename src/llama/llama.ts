@@ -106,7 +106,7 @@ type LlamaEvents = {
 // Moon's note: there's no sense of time here... Need to figure out how we're gonna do that
 // Moon's note from 4 minutes later: Well I just added messageIndex, but I'm not yet convinced that's the whole solution. It'll do for now though
 // Moon's note from 2 minutes later: Just found `sort.byCreationTime()`... So gonna play with that
-type MemoryModel = {
+export type MemoryModel = {
   type: string;
   importance: number;
   horniness: number;
@@ -284,7 +284,7 @@ ${recentMessages.join("\n\n")}`;
       model: this.model,
       prompt: `${context}\n\nShould ${personality} respond to this message? Message: ${userIdentity}: ${prompt}`,
       system: systemMessage,
-      keep_alive: "1h",
+      keep_alive: "-1h",
     });
 
     console.log(
@@ -385,7 +385,7 @@ ${recentMessages.join("\n\n")}`;
       model: this.model,
       messages,
       tools: [defaultToolTool, openDoorTool],
-      keep_alive: "1h",
+      keep_alive: "-1h",
     });
 
     await this.processToolCalls(response, messages, false);
@@ -440,9 +440,13 @@ ${recentMessages.join("\n\n")}`;
   }
 
   // Moon's note: userIdentity is currently unused because the user tag adding is handled in saveIncomingPrompt
-  // --aka, we've already done it
+  // --aka, we've already done it, at least the way things are currently set up...
   // TODO: Dude, break this up. Is big.
-  public async runPrompt(prompt: string, userIdentity: string = "User") {
+  public async runPrompt(
+    prompt: string,
+    userIdentity: string = "User",
+    onChunkUpdate?: (text: string) => Promise<void>
+  ) {
     if (!this.isInited) {
       await this.init();
     }
@@ -528,7 +532,7 @@ ${relevantMessages.join("\n\n")}
       model: this.model,
       messages,
       stream: true,
-      keep_alive: "1h",
+      keep_alive: "-1h",
     });
 
     let finalText = "";
@@ -536,6 +540,7 @@ ${relevantMessages.join("\n\n")}
       this.emit("messageInProgress", {});
       finalText += part.message.content;
       process.stdout.write(part.message.content);
+      await onChunkUpdate?.(part.message.content);
     }
 
     // Newline after the response

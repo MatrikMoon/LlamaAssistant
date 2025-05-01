@@ -1,6 +1,6 @@
 import { DiscordBot } from "./discord/discordService.js";
 import { config } from "./config.js";
-import { ApiServer } from "./api/api.js";
+import { ApiServer } from "./api/restApi.js";
 
 // const discordBot = new DiscordBot(config.DISCORD_TOKEN, config.DISCORD_CLIENT_ID);
 // await discordBot.start();

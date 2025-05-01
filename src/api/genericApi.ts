@@ -1,40 +1,50 @@
-import express, { Express, Request, Response } from "express";
 import axios from "axios";
-import { Llama } from "../llama/llama.js";
+import { Llama, MemoryModel } from "../llama/llama.js";
 
 const MODEL = "llama3.3";
 
-interface PromptRequest {
+export type PromptRequest = {
   prompt: string;
   userId: string;
 
   personality?: string;
   gender?: string;
   sourceMaterial?: string;
-}
+};
 
-interface HistoryRequest {
+export type PromptResponse = {
+  respondingTo: string;
+  response: string;
+  audio?: string;
+};
+
+export type StatusResponse = {
+  status: number;
+  message: string;
+};
+
+export type HistoryRequest = {
   limit: number;
   userId: string;
-}
+};
+
+export type HistoryResponse = {
+  messages: MemoryModel[];
+};
+
+export type DeleteHistoryRequest = {
+  userId: string;
+};
 
 type ApiLlama = {
   userId: string;
   llama: Llama;
-  currentlyProcessingVoice?: boolean;
-  inputDebounceTimer?: NodeJS.Timeout;
 };
 
-export class ApiServer {
-  private readonly port: number;
-  private readonly express: Express;
+export class GenericApi {
   private readonly llamas: ApiLlama[];
 
-  constructor(port: number = 8080) {
-    this.port = port;
-    this.express = express();
-    this.express.use(express.json());
-
+  constructor() {
     this.llamas = [];
 
     this.handleRequest = this.handleRequest.bind(this);
@@ -45,35 +55,92 @@ export class ApiServer {
     this.runOllama = this.runOllama.bind(this);
     this.runFishSpeech = this.runFishSpeech.bind(this);
     this.runRVC = this.runRVC.bind(this);
-
-    this.express.post("/process", this.handleRequest);
-    this.express.post("/processVoice", this.handleVoiceRequest);
-    this.express.post("/getHistory", this.handleHistoryRequest);
-    this.express.post("/deleteHistory", this.handleDeleteHistoryRequest);
   }
 
-  public start() {
-    this.express.listen(this.port, () => {
-      console.log(`Server running on port ${this.port}`);
-    });
-  }
-
-  private async handleRequest(req: Request, res: Response) {
-    const { prompt, userId, personality, gender, sourceMaterial } =
-      req.body as PromptRequest;
-    if (!prompt || !userId) {
-      return res.status(400).json({ detail: "Prompt and userId are required" });
+  private async onLlamaPartRecieved(
+    prompt: string,
+    personality: string,
+    text: string,
+    accumulatedMessage: string,
+    onChunkUpdate?: (chunk: PromptResponse) => void
+  ) {
+    // If there's no callback waiting for streamed content, we can skip all this
+    if (!onChunkUpdate) {
+      return accumulatedMessage;
     }
+
+    accumulatedMessage += text;
+
+    // Test if we've accumulated a new sentence, and if so, generate audio for it
+    const splitSentences = accumulatedMessage
+      .replace(/([.?!])\s*(?=[A-Z])/g, "$1|")
+      .split("|");
+    let audio: string | undefined = undefined;
+    if (splitSentences.length == 2) {
+      accumulatedMessage = accumulatedMessage
+        .substring(splitSentences[0].length)
+        .trimStart();
+
+      audio = (
+        (await this.convertTextToAudioAndGetResponse(
+          prompt,
+          splitSentences[0],
+          personality ?? "Rimuru"
+        )) as PromptResponse
+      ).audio;
+    }
+
+    // Note: !text seems to indicate the end of generation
+    if (!text) {
+      audio = (
+        (await this.convertTextToAudioAndGetResponse(
+          prompt,
+          accumulatedMessage,
+          personality ?? "Rimuru"
+        )) as PromptResponse
+      ).audio;
+    }
+
+    onChunkUpdate({
+      respondingTo: prompt,
+      response: text,
+      audio,
+    });
+
+    return accumulatedMessage;
+  }
+
+  public async handleRequest(
+    request: PromptRequest,
+    onChunkUpdate?: (chunk: PromptResponse) => void
+  ): Promise<PromptResponse | StatusResponse> {
+    const { prompt, userId, personality, gender, sourceMaterial } = request;
+    if (!prompt || !userId) {
+      return { status: 400, message: "Prompt and userId are required" };
+    }
+
+    let accumulatedMessage = "";
 
     const ollamaOutput = await this.runOllama(
       prompt,
       userId,
       personality,
       gender,
-      sourceMaterial
+      sourceMaterial,
+      undefined, // leave default value
+      undefined, // leave default value
+      async (text) => {
+        accumulatedMessage = await this.onLlamaPartRecieved(
+          prompt,
+          personality ?? "Rimuru",
+          text,
+          accumulatedMessage,
+          onChunkUpdate
+        );
+      }
     );
     if (!ollamaOutput) {
-      return res.status(500).json({ detail: "Ollama processing failed." });
+      return { status: 500, message: "Ollama processing failed." };
     }
 
     let ollamaOutputWithoutThink = ollamaOutput;
@@ -83,105 +150,99 @@ export class ApiServer {
       );
     }
 
-    return await this.convertTextToAudioAndSendResponse(
-      prompt,
-      ollamaOutputWithoutThink,
-      personality ?? "Rimuru",
-      res
-    );
+    return onChunkUpdate
+      ? { respondingTo: prompt, response: "" }
+      : await this.convertTextToAudioAndGetResponse(
+          prompt,
+          ollamaOutputWithoutThink,
+          personality ?? "Rimuru"
+        );
   }
 
-  private async handleVoiceRequest(req: Request, res: Response) {
-    const { prompt, userId, personality, gender, sourceMaterial } =
-      req.body as PromptRequest;
+  public async handleVoiceRequest(
+    request: PromptRequest,
+    onChunkUpdate?: (chunk: PromptResponse) => void
+  ): Promise<PromptResponse | StatusResponse> {
+    const { prompt, userId, personality, gender, sourceMaterial } = request;
     if (!prompt || !userId) {
-      return res.status(400).json({ detail: "Prompt and userId are required" });
+      return { status: 400, message: "Prompt and userId are required" };
     }
 
     const filteredPrompt = this.filterWordsFromSTT(prompt);
 
     const llama = this.createLlama(userId, personality, gender, sourceMaterial);
 
-    if (llama.inputDebounceTimer) {
-      // For now, we're only saving prompts rimuru responds to
-      // await llama.llama.saveIncomingPrompt(filteredPrompt);
-      clearTimeout(llama.inputDebounceTimer);
-      res.status(204).json({ detail: "Prompt debounced" });
-    } else if (llama.currentlyProcessingVoice) {
-      // For now, we're only saving prompts rimuru responds to
-      // await llama.llama.saveIncomingPrompt(filteredPrompt);
-      res
-        .status(204)
-        .json({ detail: "Will not process due to prompt in progress" });
-    }
+    // Before anything, check for needed tools.
+    // Note: If this too often calls tools by accident,
+    // we may need to do it either *in* or after shouldRespond
+    await llama.llama.useTools(prompt);
 
-    llama.inputDebounceTimer = setTimeout(async () => {
-      llama.inputDebounceTimer = undefined;
-      llama.currentlyProcessingVoice = true;
+    const shouldRespond = await llama.llama.shouldRespond(
+      filteredPrompt,
+      userId,
+      personality ?? "Rimuru",
+      Llama.getShouldRespondForPersonality(
+        personality ?? "Rimuru",
+        gender ?? "male",
+        sourceMaterial ?? "That Time I got Reincarnated as a Slime"
+      )
+    );
 
-      // Before anything, check for needed tools.
-      // Note: If this too often calls tools by accident,
-      // we may need to do it either *in* or after shouldRespond
-      await llama.llama.useTools(prompt);
+    // For now, we're only saving prompts rimuru responds to
+    // await llama.llama.saveIncomingPrompt(filteredPrompt);
 
-      const shouldRespond = await llama.llama.shouldRespond(
+    if (shouldRespond) {
+      await llama.llama.saveIncomingPrompt(filteredPrompt, userId);
+
+      let accumulatedMessage = "";
+
+      const ollamaOutput = await this.runOllama(
         filteredPrompt,
         userId,
-        personality ?? "Rimuru",
-        Llama.getShouldRespondForPersonality(
-          personality ?? "Rimuru",
-          gender ?? "male",
-          sourceMaterial ?? "That Time I got Reincarnated as a Slime"
-        )
-      );
-
-      // For now, we're only saving prompts rimuru responds to
-      // await llama.llama.saveIncomingPrompt(filteredPrompt);
-
-      if (shouldRespond) {
-        await llama.llama.saveIncomingPrompt(filteredPrompt, userId);
-
-        const ollamaOutput = await this.runOllama(
-          filteredPrompt,
-          userId,
-          personality,
-          gender,
-          sourceMaterial,
-          false,
-          false
-        );
-        if (!ollamaOutput) {
-          llama.currentlyProcessingVoice = false;
-          return res.status(500).json({ detail: "Ollama processing failed." });
-        }
-
-        let ollamaOutputWithoutThink = ollamaOutput;
-        if (ollamaOutput.includes("</think>")) {
-          ollamaOutputWithoutThink = ollamaOutput.substring(
-            ollamaOutput.indexOf("</think>") + "</think>".length
+        personality,
+        gender,
+        sourceMaterial,
+        false,
+        false,
+        async (text) => {
+          accumulatedMessage = await this.onLlamaPartRecieved(
+            filteredPrompt,
+            personality ?? "Rimuru",
+            text,
+            accumulatedMessage,
+            onChunkUpdate
           );
         }
-
-        await this.convertTextToAudioAndSendResponse(
-          filteredPrompt,
-          ollamaOutputWithoutThink,
-          personality ?? "Rimuru",
-          res
-        );
-        llama.currentlyProcessingVoice = false;
-      } else {
-        llama.currentlyProcessingVoice = false;
-        return res
-          .status(204)
-          .json({ detail: "Ollama determined not to respond" });
+      );
+      if (!ollamaOutput) {
+        return { status: 500, message: "Ollama processing failed." };
       }
-    }, 2000);
+
+      let ollamaOutputWithoutThink = ollamaOutput;
+      if (ollamaOutput.includes("</think>")) {
+        ollamaOutputWithoutThink = ollamaOutput.substring(
+          ollamaOutput.indexOf("</think>") + "</think>".length
+        );
+      }
+
+      return onChunkUpdate
+        ? { respondingTo: filteredPrompt, response: "" }
+        : await this.convertTextToAudioAndGetResponse(
+            filteredPrompt,
+            ollamaOutputWithoutThink,
+            personality ?? "Rimuru"
+          );
+    } else {
+      return { status: 204, message: "Ollama determined not to respond" };
+    }
   }
 
-  private async handleHistoryRequest(req: Request, res: Response) {
-    const { limit, userId } = req.body as HistoryRequest;
+  public async handleHistoryRequest(
+    request: HistoryRequest
+  ): Promise<HistoryResponse | StatusResponse> {
+    const { limit, userId } = request;
     if (!limit || !userId) {
-      return res.status(400).json({ detail: "Limit and userId are required" });
+      return { status: 400, message: "Limit and userId are required" };
     }
 
     const llama = this.createLlama(userId);
@@ -189,16 +250,20 @@ export class ApiServer {
       // We don't want this llama to stick around, just in case the user wasn't done typing...
       // Moon's note: this is nasty, but I'll remnid you this is only a debug interface
       this.deleteLlama(userId);
-      return res.json(await llama.llama.getChatHistory(limit));
+      return {
+        messages: await llama.llama.getChatHistory(limit),
+      };
     }
 
-    return res.status(404).json("That Llama does not exist");
+    return { status: 404, message: "That Llama does not exist" };
   }
 
-  private async handleDeleteHistoryRequest(req: Request, res: Response) {
-    const { userId } = req.body as HistoryRequest;
+  public async handleDeleteHistoryRequest(
+    request: DeleteHistoryRequest
+  ): Promise<StatusResponse> {
+    const { userId } = request;
     if (!userId) {
-      return res.status(400).json({ detail: "UserId is required" });
+      return { status: 400, message: "UserId is required" };
     }
 
     const llama = this.createLlama(userId);
@@ -206,10 +271,10 @@ export class ApiServer {
       await llama.llama.deleteConversation();
       this.deleteLlama(userId);
 
-      return res.status(200).json({ detail: "Conversation was deleted" });
+      return { status: 200, message: "Conversation was deleted" };
     }
 
-    return res.status(404).json("That Llama does not exist");
+    return { status: 404, message: "That Llama does not exist" };
   }
 
   private createLlama(
@@ -292,12 +357,11 @@ export class ApiServer {
       .replace(" remaroo", " Rimuru");
   }
 
-  private async convertTextToAudioAndSendResponse(
+  private async convertTextToAudioAndGetResponse(
     respondingTo: string,
     response: string,
-    personality: string,
-    res: Response
-  ) {
+    personality: string
+  ): Promise<PromptResponse | StatusResponse> {
     // Right now we only support Rimuru and Frieren voices
     if (
       personality !== "Rimuru" &&
@@ -312,19 +376,19 @@ export class ApiServer {
       personality
     );
     if (!fishOutput) {
-      return res.status(500).json({ detail: "Fish-speech processing failed." });
+      return { status: 500, message: "Fish-speech processing failed." };
     }
 
     const rvcOutput = await this.runRVC(fishOutput, personality);
     if (!rvcOutput) {
-      return res.status(500).json({ detail: "RVC processing failed." });
+      return { status: 500, message: "RVC processing failed." };
     }
 
-    return res.json({
+    return {
       respondingTo,
       response,
       audio: rvcOutput.toString("base64"),
-    });
+    };
   }
 
   private async runOllama(
@@ -334,7 +398,8 @@ export class ApiServer {
     gender: string = "male",
     sourceMaterial: string = "That Time I got Reincarnated as a Slime",
     saveIncomingPrompt: boolean = true,
-    useTools: boolean = true
+    useTools: boolean = true,
+    onChunkUpdate?: (text: string) => Promise<void>
   ): Promise<string | null> {
     try {
       const llama = this.createLlama(
@@ -345,16 +410,16 @@ export class ApiServer {
       );
 
       if (useTools) {
-        console.log("Using tools...");
-        await llama.llama.useTools(prompt);
-        console.log("Used.");
+        // console.log("Using tools...");
+        // await llama.llama.useTools(prompt);
+        // console.log("Used.");
       }
 
       if (saveIncomingPrompt) {
         await llama.llama.saveIncomingPrompt(prompt, userId);
       }
 
-      return await llama.llama.runPrompt(prompt, userId);
+      return await llama.llama.runPrompt(prompt, userId, onChunkUpdate);
     } catch (error) {
       console.error(`Ollama error: ${error}`);
       return null;
@@ -363,7 +428,9 @@ export class ApiServer {
 
   private async runFishSpeech(
     text: string,
-    personality: string
+    personality: string,
+    stream?: boolean,
+    audioChunkRecieved?: (audio: Buffer) => void
   ): Promise<Buffer | null> {
     const ttsHost = "http://192.168.1.103:8080/v1/tts";
     const payload = {
@@ -372,14 +439,27 @@ export class ApiServer {
       reference_id: personality.toLowerCase(),
       use_memory_cache: "on",
       normalize: "false",
+      streaming: !!stream,
     };
     try {
       const response = await axios.post(ttsHost, payload, {
         headers: { accept: "*/*", "Content-Type": "application/json" },
-        responseType: "arraybuffer",
+        responseType: stream ? "stream" : "arraybuffer",
       });
-      console.log(`Fish-speech returned ${response.data.byteLength} bytes`);
-      return Buffer.from(response.data);
+
+      if (stream) {
+        const stream = response.data;
+
+        console.log(`Streaming Fish-speech response...`);
+
+        for await (const chunk of stream) {
+          audioChunkRecieved!(Buffer.from(chunk));
+        }
+        return null;
+      } else {
+        console.log(`Fish-speech returned ${response.data.byteLength} bytes`);
+        return Buffer.from(response.data);
+      }
     } catch (error) {
       console.error(`Fish-speech error: ${error}`);
       return null;
