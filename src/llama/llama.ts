@@ -213,6 +213,7 @@ prompt: "${x.properties.prompt}"`;
     let promptEmbedResult = await this.ollama.embed({
       model: "mxbai-embed-large",
       input: prompt,
+      keep_alive: "-1h",
     });
 
     // Do the lookup I just mentioned in the previous comment
@@ -317,6 +318,7 @@ ${recentMessages.join("\n\n")}`;
     let promptEmbedResult = await this.ollama.embed({
       model: "mxbai-embed-large",
       input: prompt,
+      keep_alive: "-1h",
     });
 
     // Store the message in memory no matter the result, for context
@@ -440,6 +442,7 @@ ${recentMessages.join("\n\n")}`;
         ? await this.ollama.chat({
             model: this.model,
             messages: messages,
+            keep_alive: "-1h",
           })
         : chatResponse;
     }
@@ -535,6 +538,7 @@ ${relevantMessages.join("\n\n")}
     let responseEmbedResult = await this.ollama.embed({
       model: "mxbai-embed-large",
       input: finalText,
+      keep_alive: "-1h",
     });
 
     // Save the response in memory (prompt will already have been saved by `shouldRespond`)
