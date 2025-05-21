@@ -31,64 +31,15 @@ When responding, you will not use tags. You will not start the message with "Sel
 const DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE = `You are an AI assistant. You help determine whether or not {personality} should respond to a message, based on the message and recent memories.
 {personality} should ONLY respond if {pronounHe}'s being addressed directly.
 
-Messages from the user are coming from speech-to-text, so they may be jumbled. Do not respond if the latest message is the same words repeated over and over, or is made up of nonsense.
+Messages from the user are coming from speech-to-text, so they may be nonsensical. Respond "no" if the latest message is nonsense.
 
-You will respond only with "yes" if you conclude that {pronounHe} should respond.
+You will respond only with "yes" if you conclude that {pronounHe} should respond.`;
 
-Here are some example scenarios with their correct answers:
+const DEFAULT_CONVOEND_SYSTEM_MESSAGE = `You are an AI assistant. You help determine whether or not the user is trying to end the conversation.
 
-Scenario 1:
-Cashdru: Just stopping by and saying hi
-Self: Ah, well in that case, it's always great to see you! What have you been up to lately? Any new projects or adventures in the works?
-Should {personality} respond to this message? Message: Cashdru: My girlfriend just broke up with me, and these two idiots are going to be joining me in the most depressing game imaginable
-You should answer: Yes.
-Reasoning: {personality} asked Cashdru a question, and he is now responding, so yes.
+Messages from the user are coming from speech-to-text, so they may be nonsensical. Respond "no" if the latest message is nonsense.
 
-Scenairo 2:
-Should {personality} respond to this message? Message: Moon: {personality}, ghost just said that I'm an idiot
-You should answer: Yes.
-Reasoning: Moon is directly addressing {personality} is the message, so yes.
-
-Scenario 3:
-Self: But back to Escape from Tarkov... Cashdru, I have to ask, are you sure you're ready for this kind of game right now? It sounds like it might be a bit... intense.
-Should {personality} respond to this message? Message: Cashdru: It lets me forget everything, it's something that I can fully dive into and just lose myself for a bit, it's a really nice break from reality every once in a while
-You should answer: Yes.
-Reasoning: Cashdru is responding to {personality}'s question, so yes.
-
-Scenario 4:
-Should {personality} respond to this message? Message: Moon: Hey mark, you around?
-You should answer: No.
-Reasoning: Moon is addressing a different person, Mark, so no.
-
-Scenario 5:
-Should {personality} respond to this message? Message: Moon: Hey {personality}, ford says I took his toes
-You should answer: Yes.
-Reasoning: Moon is addressing {personality}, so yes.
-
-Scenario 6:
-Should {personality} respond to this message? Message: Ramp: Hi
-You should answer: No.
-Reasoning: It is unclear whether Ramp is addressing {personality}, so no.
-
-Relevant past messages will be provided in the prompt, in the following format:
-importance: {number}
-horniness: {number}
-significance: {Event|Location|None}
-author: {string}
-prompt: "{string}"
-
-"importance" measures how significant the message was to the location, story, or mood of the roleplay.
-"horniness" measures how suggestive the dialogue or actions in the message were.
-"significance" defines what makes this message significant. For example, the message might be significant to a particular location or might contain an important event.
-"author" is the name of the user who wrote the message. If the name is "Self", {personality} is the author.
-"prompt" is the content of the message
-
-Relevant messages are NOT in chronolocial order, and may be very old, so they should be treated as random memories rather than chat history.
-Remember, {personality} should ONLY respond if {pronounHe}'s being addressed directly.`;
-
-// Note: Maybe not needed? I'm just using an empty system message now and it seems to be doing even better than this one did
-const DEFAULT_TOOL_SYSTEM_MESSAGE = `You are are an AI assistant who decides what tools to use.
-You will resopnd with only "yes" no matter what, including any tool calls needed based on the last few messages.`;
+You will respond only with "yes" if you conclude that the user is attempting to end the conversation.`;
 
 // Moon's note, 12/28/2024:
 // It seems that one of the packages required by weaviate (grpc), in turn requires "long.js,"
@@ -221,11 +172,23 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     );
   }
 
-  public async shouldRespond(
-    prompt: string,
-    userIdentity: string,
+  public static getConvoEndForPersonality(
     personality: string,
-    systemMessage: string
+    pronoun: string,
+    sourceMaterial: string
+  ) {
+    return this.convertSystemPromptForPersonality(
+      DEFAULT_CONVOEND_SYSTEM_MESSAGE,
+      personality,
+      pronoun,
+      sourceMaterial
+    );
+  }
+
+  private async prepareRAG(
+    prompt: string,
+    recentMessageCount = 5,
+    relevantMessageCount = 5
   ) {
     if (!this.isInited) {
       await this.init();
@@ -234,7 +197,7 @@ export class Llama extends CustomEventEmitter<LlamaEvents> {
     // Get last message index and build recent chat history
     const mostRecentMemory = await this.memoryCollection!.query.fetchObjects({
       sort: this.memoryCollection!.sort.byCreationTime(false),
-      limit: 5,
+      limit: recentMessageCount,
     });
 
     // Build text for recent memories
@@ -256,7 +219,7 @@ prompt: "${x.properties.prompt}"`;
     let queryResult = await this.memoryCollection!.query.nearVector(
       promptEmbedResult.embeddings[0],
       {
-        limit: 5,
+        limit: relevantMessageCount,
       }
     );
 
@@ -273,7 +236,26 @@ author: ${x.properties.author}
 prompt: "${x.properties.prompt}"`;
       });
 
-    const context = `Here are some past messages that may be relevant to what the user is talking about. These may not be in chronological order, so only use them for remembering events or places' descriptions:
+    return { recentMessages, relevantMessages, mostRecentMemory };
+  }
+
+  public async shouldRespond(
+    prompt: string,
+    userIdentity: string,
+    personality: string,
+    systemMessage: string
+  ) {
+    if (!this.isInited) {
+      await this.init();
+    }
+
+    const { recentMessages, relevantMessages } = await this.prepareRAG(
+      prompt,
+      2,
+      0
+    );
+
+    const context = `Here are some past messages that may be relevant to what the user is talking about. These may not be in chronological order, so only use them for remembering events or other miscellaneous info:
 ${relevantMessages.join("\n\n")}
 
 Here are the last 5 messages in the chat, in chronological order:
@@ -289,6 +271,35 @@ ${recentMessages.join("\n\n")}`;
 
     console.log(
       `${userIdentity}: ${prompt}\n(Will respond? ${response.response})`
+    );
+
+    return response.response.slice(-20).toLowerCase().includes("yes");
+  }
+
+  public async isConvoEnd(
+    prompt: string,
+    userIdentity: string,
+    systemMessage: string
+  ) {
+    if (!this.isInited) {
+      await this.init();
+    }
+
+    const { recentMessages } = await this.prepareRAG(prompt, 5, 0);
+
+    const context = `Here are the last 5 messages in the chat, in chronological order:
+${recentMessages.join("\n\n")}`;
+
+    // Generate the response
+    const response = await this.ollama.generate({
+      model: this.model,
+      prompt: `${context}\n\nIs the user trying to end the conversation with this message? Message: ${userIdentity}: ${prompt}`,
+      system: systemMessage,
+      keep_alive: "-1h",
+    });
+
+    console.log(
+      `${userIdentity}: ${prompt}\n(Convo end? ${response.response})`
     );
 
     return response.response.slice(-20).toLowerCase().includes("yes");
@@ -358,10 +369,7 @@ ${recentMessages.join("\n\n")}`;
     }
 
     // Get last message index and build recent chat history
-    const mostRecentMemory = await this.memoryCollection!.query.fetchObjects({
-      sort: this.memoryCollection!.sort.byCreationTime(false),
-      limit: 1,
-    });
+    const { mostRecentMemory } = await this.prepareRAG(prompt, 1, 0);
 
     let messages: Message[] = [];
 
@@ -464,38 +472,11 @@ ${recentMessages.join("\n\n")}`;
     //             )
     //         });
 
-    // Generate embed for prompt, so we can do semantic lookup on other saved embeds
-    let promptEmbedResult = await this.ollama.embed({
-      model: "mxbai-embed-large",
-      input: prompt,
-    });
-
-    // Do the lookup I just mentioned in the previous comment
-    let queryResult = await this.memoryCollection!.query.nearVector(
-      promptEmbedResult.embeddings[0],
-      {
-        limit: 30,
-      }
+    const { relevantMessages, mostRecentMemory } = await this.prepareRAG(
+      prompt,
+      100,
+      30
     );
-
-    // Build recent chat history
-    const mostRecentMemory = await this.memoryCollection!.query.fetchObjects({
-      sort: this.memoryCollection!.sort.byCreationTime(false),
-      limit: 100,
-    });
-
-    // Only include messages here if they aren't already in recent memory
-    const relevantMessages = queryResult.objects
-      ?.filter(
-        (x) => !mostRecentMemory.objects?.map((y) => y.uuid).includes(x.uuid)
-      )
-      .map((x) => {
-        return `importance: ${x.properties.importance}
-horniness: ${x.properties.horniness}
-significance: ${x.properties.significance}
-author: ${x.properties.author}
-prompt: "${x.properties.prompt}"`;
-      });
 
     // Begin generation
     this.emit("messageInProgress", {});

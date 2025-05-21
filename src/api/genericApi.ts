@@ -39,6 +39,7 @@ export type DeleteHistoryRequest = {
 type ApiLlama = {
   userId: string;
   llama: Llama;
+  isListeningMode: boolean;
 };
 
 export class GenericApi {
@@ -177,21 +178,24 @@ export class GenericApi {
     // we may need to do it either *in* or after shouldRespond
     await llama.llama.useTools(prompt);
 
-    const shouldRespond = await llama.llama.shouldRespond(
-      filteredPrompt,
-      userId,
-      personality ?? "Rimuru",
-      Llama.getShouldRespondForPersonality(
+    const shouldRespond =
+      llama.isListeningMode ||
+      (await llama.llama.shouldRespond(
+        filteredPrompt,
+        userId,
         personality ?? "Rimuru",
-        gender ?? "male",
-        sourceMaterial ?? "That Time I got Reincarnated as a Slime"
-      )
-    );
+        Llama.getShouldRespondForPersonality(
+          personality ?? "Rimuru",
+          gender ?? "male",
+          sourceMaterial ?? "That Time I got Reincarnated as a Slime"
+        )
+      ));
 
     // For now, we're only saving prompts rimuru responds to
     // await llama.llama.saveIncomingPrompt(filteredPrompt);
 
     if (shouldRespond) {
+      llama.isListeningMode = true;
       await llama.llama.saveIncomingPrompt(filteredPrompt, userId);
 
       let accumulatedMessage = "";
@@ -224,6 +228,21 @@ export class GenericApi {
           ollamaOutput.indexOf("</think>") + "</think>".length
         );
       }
+
+      // At this point I'm really just assuming we're using streaming.
+      // If we are, we can take a little time at the end here to do convoEnd
+      // processing, and it'll likely happen before the user notices.
+      // Basically if we think the user is done talking to us, we'll go back
+      // to strictly waiting to be addressed.
+      llama.isListeningMode = !(await llama.llama.isConvoEnd(
+        filteredPrompt,
+        userId,
+        Llama.getConvoEndForPersonality(
+          personality ?? "Rimuru",
+          gender ?? "male",
+          sourceMaterial ?? "That Time I got Reincarnated as a Slime"
+        )
+      ));
 
       return onChunkUpdate
         ? { respondingTo: filteredPrompt, response: "" }
@@ -304,6 +323,7 @@ export class GenericApi {
           )
         ),
         userId,
+        isListeningMode: false,
       };
       this.llamas.push(llama);
     }
