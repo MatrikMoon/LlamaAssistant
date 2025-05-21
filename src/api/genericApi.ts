@@ -176,7 +176,7 @@ export class GenericApi {
     // Before anything, check for needed tools.
     // Note: If this too often calls tools by accident,
     // we may need to do it either *in* or after shouldRespond
-    await llama.llama.useTools(prompt);
+    // await llama.llama.useTools(prompt);
 
     const shouldRespond =
       llama.isListeningMode ||

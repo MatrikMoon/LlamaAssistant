@@ -250,6 +250,8 @@ prompt: "${x.properties.prompt}"`;
       await this.init();
     }
 
+    console.log(`${userIdentity}: ${prompt}\n(Will respond? `);
+
     const { recentMessages, relevantMessages } = await this.prepareRAG(
       prompt,
       2,
@@ -270,9 +272,7 @@ ${recentMessages.join("\n\n")}`;
       keep_alive: "-1h",
     });
 
-    console.log(
-      `${userIdentity}: ${prompt}\n(Will respond? ${response.response})`
-    );
+    console.log(`${response.response})`);
 
     return response.response.slice(-20).toLowerCase().includes("yes");
   }
