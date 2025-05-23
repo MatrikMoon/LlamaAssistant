@@ -180,18 +180,14 @@ export class GenericApi {
 
     const shouldRespond =
       llama.isListeningMode ||
-      (await llama.llama.shouldRespond(
-        filteredPrompt,
-        userId,
-        personality ?? "Rimuru"
-      ));
+      (await llama.llama.shouldRespond(filteredPrompt));
 
     // For now, we're only saving prompts rimuru responds to
     // await llama.llama.saveIncomingPrompt(filteredPrompt);
 
     if (shouldRespond) {
       llama.isListeningMode = true;
-      await llama.llama.saveIncomingPrompt(filteredPrompt, userId);
+      await llama.llama.saveIncomingPrompt(filteredPrompt);
 
       let accumulatedMessage = "";
 
@@ -229,10 +225,7 @@ export class GenericApi {
       // processing, and it'll likely happen before the user notices.
       // Basically if we think the user is done talking to us, we'll go back
       // to strictly waiting to be addressed.
-      llama.isListeningMode = !(await llama.llama.isConvoEnd(
-        filteredPrompt,
-        userId
-      ));
+      llama.isListeningMode = !(await llama.llama.isConvoEnd(filteredPrompt));
 
       return onChunkUpdate
         ? { respondingTo: filteredPrompt, response: "" }
@@ -423,10 +416,10 @@ export class GenericApi {
       }
 
       if (saveIncomingPrompt) {
-        await llama.llama.saveIncomingPrompt(prompt, userId);
+        await llama.llama.saveIncomingPrompt(prompt);
       }
 
-      return await llama.llama.runPrompt(prompt, userId, onChunkUpdate);
+      return await llama.llama.runPrompt(prompt, onChunkUpdate);
     } catch (error) {
       console.error(`Ollama error: ${error}`);
       return null;

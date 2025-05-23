@@ -93,16 +93,11 @@ export class DiscordBot extends CustomEventEmitter<DiscordBotEvents> {
 
     // Determine whether we should respond
     const shouldRespond = await channelLlama.llama.shouldRespond(
-      message.content,
-      message.author.displayName,
-      "This is a placeholder personality. Remind me to change it"
+      message.content
     );
 
     // Save the incoming message as a memory
-    await channelLlama.llama.saveIncomingPrompt(
-      message.content,
-      message.author.displayName
-    );
+    await channelLlama.llama.saveIncomingPrompt(message.content);
 
     // Respond, if it was determined we should do so
     if (shouldRespond) {

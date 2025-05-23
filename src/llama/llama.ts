@@ -224,16 +224,12 @@ prompt: "${x.properties.prompt}"`;
     return { recentMessages, relevantMessages, mostRecentMemory, summary };
   }
 
-  public async shouldRespond(
-    prompt: string,
-    userIdentity: string,
-    personality: string
-  ) {
+  public async shouldRespond(prompt: string) {
     if (!this.isInited) {
       await this.init();
     }
 
-    console.log(`${userIdentity}: ${prompt}\n(Will respond? `);
+    console.log(`${this.channelIdentity}: ${prompt}\n(Will respond? `);
 
     const { recentMessages } = await this.prepareRAG(prompt, 2, 0);
 
@@ -243,7 +239,7 @@ ${recentMessages.join("\n\n")}`;
     // Generate the response
     const response = await this.ollama.generate({
       model: this.model,
-      prompt: `${context}\n\nShould ${personality} respond to this message? Message: ${userIdentity}: ${prompt}`,
+      prompt: `${context}\n\nShould ${this.personality} respond to this message? Message: ${this.channelIdentity}: ${prompt}`,
       system: this.convertSystemPromptForPersonality(
         DEFAULT_SHOULDRESPOND_SYSTEM_MESSAGE
       ),
@@ -255,7 +251,7 @@ ${recentMessages.join("\n\n")}`;
     return response.response.slice(-20).toLowerCase().includes("yes");
   }
 
-  public async isConvoEnd(prompt: string, userIdentity: string) {
+  public async isConvoEnd(prompt: string) {
     if (!this.isInited) {
       await this.init();
     }
@@ -268,7 +264,7 @@ ${recentMessages.join("\n\n")}`;
     // Generate the response
     const response = await this.ollama.generate({
       model: this.model,
-      prompt: `${context}\n\nIs the user trying to end the conversation with this message? Message: ${userIdentity}: ${prompt}`,
+      prompt: `${context}\n\nIs the user trying to end the conversation with this message? Message: ${this.channelIdentity}: ${prompt}`,
       system: this.convertSystemPromptForPersonality(
         DEFAULT_CONVOEND_SYSTEM_MESSAGE
       ),
@@ -276,17 +272,13 @@ ${recentMessages.join("\n\n")}`;
     });
 
     console.log(
-      `${userIdentity}: ${prompt}\n(Convo end? ${response.response})`
+      `${this.channelIdentity}: ${prompt}\n(Convo end? ${response.response})`
     );
 
     return response.response.slice(-20).toLowerCase().includes("yes");
   }
 
-  public async summarizeEvents(
-    newUserMessage: string,
-    newBotMessage: string,
-    userIdentity: string
-  ) {
+  public async summarizeEvents(newUserMessage: string, newBotMessage: string) {
     if (!this.isInited) {
       await this.init();
     }
@@ -300,7 +292,7 @@ ${recentMessages.join("\n\n")}`;
     // Generate the response
     const response = await this.ollama.generate({
       model: this.model,
-      prompt: `${prompt}\n\nMessages:\n${userIdentity}: ${newUserMessage}\n\n${this.personality}: ${newBotMessage}`,
+      prompt: `${prompt}\n\nMessages:\n${this.channelIdentity}: ${newUserMessage}\n\n${this.personality}: ${newBotMessage}`,
       system: this.convertSystemPromptForPersonality(
         DEFAULT_SUMMARY_SYSTEM_MESSAGE
       ),
@@ -310,10 +302,7 @@ ${recentMessages.join("\n\n")}`;
     return response.response;
   }
 
-  public async saveIncomingPrompt(
-    prompt: string,
-    userIdentity: string = "User"
-  ) {
+  public async saveIncomingPrompt(prompt: string) {
     if (!this.isInited) {
       await this.init();
     }
@@ -332,7 +321,7 @@ ${recentMessages.join("\n\n")}`;
         importance: 0,
         horniness: 0,
         significance: "None",
-        author: userIdentity,
+        author: this.channelIdentity,
         prompt,
       },
       vectors: promptEmbedResult.embeddings[0],
@@ -492,12 +481,9 @@ ${recentMessages.join("\n\n")}`;
     return chatResponse;
   }
 
-  // Moon's note: userIdentity is currently unused because the user tag adding is handled in saveIncomingPrompt
-  // --aka, we've already done it, at least the way things are currently set up...
   // TODO: Dude, break this up. Is big.
   public async runPrompt(
     prompt: string,
-    userIdentity: string = "User",
     onChunkUpdate?: (text: string) => Promise<void>
   ) {
     if (!this.isInited) {
@@ -600,11 +586,7 @@ ${relevantMessages.join("\n\n")}
     });
 
     // Generate and save an updated summary of the recent exchange
-    const newSummary = await this.summarizeEvents(
-      prompt,
-      finalText,
-      userIdentity
-    );
+    const newSummary = await this.summarizeEvents(prompt, finalText);
 
     console.log("Summary:", newSummary);
 
