@@ -237,7 +237,7 @@ prompt: "${x.properties.prompt}"`;
 
     const { recentMessages } = await this.prepareRAG(prompt, 2, 0);
 
-    const context = `Here are the last 5 messages in the chat, in chronological order:
+    const context = `Here are the last 2 messages in the chat, in chronological order:
 ${recentMessages.join("\n\n")}`;
 
     // Generate the response
