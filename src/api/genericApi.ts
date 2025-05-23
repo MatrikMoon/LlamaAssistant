@@ -183,12 +183,7 @@ export class GenericApi {
       (await llama.llama.shouldRespond(
         filteredPrompt,
         userId,
-        personality ?? "Rimuru",
-        Llama.getShouldRespondForPersonality(
-          personality ?? "Rimuru",
-          gender ?? "male",
-          sourceMaterial ?? "That Time I got Reincarnated as a Slime"
-        )
+        personality ?? "Rimuru"
       ));
 
     // For now, we're only saving prompts rimuru responds to
@@ -236,12 +231,7 @@ export class GenericApi {
       // to strictly waiting to be addressed.
       llama.isListeningMode = !(await llama.llama.isConvoEnd(
         filteredPrompt,
-        userId,
-        Llama.getConvoEndForPersonality(
-          personality ?? "Rimuru",
-          gender ?? "male",
-          sourceMaterial ?? "That Time I got Reincarnated as a Slime"
-        )
+        userId
       ));
 
       return onChunkUpdate
@@ -313,15 +303,7 @@ export class GenericApi {
       }
 
       llama = {
-        llama: new Llama(
-          user,
-          MODEL,
-          Llama.getSystemPromptForPersonality(
-            personality,
-            gender,
-            sourceMaterial
-          )
-        ),
+        llama: new Llama(user, MODEL, personality, gender, sourceMaterial),
         userId,
         isListeningMode: false,
       };
@@ -343,7 +325,7 @@ export class GenericApi {
 
   private filterWordsForTTS(text: string) {
     return text
-      .replace("Rimuru", "Reemaru")
+      .replace("Rimuru", "Reemuru")
       .replace("Shion", "Sheeown")
       .replace("*", "")
       .replace(" - ", ", ");
@@ -482,7 +464,7 @@ export class GenericApi {
         }
         return null;
       } else {
-        console.log(`Fish-speech returned ${response.data.byteLength} bytes`);
+        // console.log(`Fish-speech returned ${response.data.byteLength} bytes`);
         return Buffer.from(response.data);
       }
     } catch (error) {
@@ -504,13 +486,13 @@ export class GenericApi {
         headers: { "Content-Type": "application/json" },
         responseType: "arraybuffer",
       });
-      console.log(`RVC loaded model: ${personality.toLowerCase()}`);
+      // console.log(`RVC loaded model: ${personality.toLowerCase()}`);
 
       const response = await axios.post(`${rvcHost}/convert`, payload, {
         headers: { "Content-Type": "application/json" },
         responseType: "arraybuffer",
       });
-      console.log(`RVC returned ${response.data.byteLength} bytes`);
+      // console.log(`RVC returned ${response.data.byteLength} bytes`);
       return Buffer.from(response.data);
     } catch (error) {
       console.error(`RVC error: ${error}`);
