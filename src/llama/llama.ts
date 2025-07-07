@@ -285,9 +285,13 @@ ${recentMessages.join("\n\n")}`;
 
     const { summary } = await this.prepareRAG(newUserMessage, 0, 0);
 
-    const prompt = summary
+    let prompt = summary
       ? `Current summary:\n${summary}\n\nHere are the latest two messages in the chat. Please update the above summary, concisely and in no longer than one paragraph, taking into account what happens in this most recent exchange.`
       : "Here are the first messages of a chat between a number of users. Please create a concise summary, no longer than one paragraph, including any information needed to understand what has happened so far in the conversation.";
+
+    if (summary?.length > 700) {
+      prompt = `${prompt} Also, please condense the summary (mostly the earlier parts) until it is half its current length.`;
+    }
 
     // Generate the response
     const response = await this.ollama.generate({
@@ -371,8 +375,8 @@ ${recentMessages.join("\n\n")}`;
         // If the collection is emtpy, filtering will throw an error
         (await this.memoryCollection!.length()) > 0
           ? this.memoryCollection!.filter.byProperty("type").equal(
-              "chatHistory"
-            )
+            "chatHistory"
+          )
           : undefined,
       sort: this.memoryCollection!.sort.byCreationTime(false),
       limit,
@@ -471,10 +475,10 @@ ${recentMessages.join("\n\n")}`;
       // time on the currently-inevitable tool call
       return continueAfterTool
         ? await this.ollama.chat({
-            model: this.model,
-            messages: messages,
-            keep_alive: "-1h",
-          })
+          model: this.model,
+          messages: messages,
+          keep_alive: "-1h",
+        })
         : chatResponse;
     }
 
